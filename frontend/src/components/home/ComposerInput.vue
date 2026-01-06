@@ -40,6 +40,23 @@
       </div>
     </div>
 
+    <!-- 一键二创选项 -->
+    <div v-if="uploadedImages.length > 0" class="layout-mimic-option">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          v-model="layoutMimicMode"
+          @change="handleLayoutMimicChange"
+          :disabled="loading"
+        />
+        <span class="checkbox-custom"></span>
+        <span class="checkbox-text">
+          <span class="option-title">一键二创模式</span>
+          <span class="option-desc">严格模仿参考图的布局结构，只替换文字内容（推荐用于小红书爆款图片）</span>
+        </span>
+      </label>
+    </div>
+
     <!-- 工具栏 -->
     <div class="composer-toolbar">
       <div class="toolbar-left">
@@ -103,6 +120,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'generate'): void
   (e: 'imagesChange', images: File[]): void
+  (e: 'layoutMimicChange', enabled: boolean): void
 }>()
 
 // 输入框引用
@@ -110,6 +128,9 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 已上传的图片
 const uploadedImages = ref<UploadedImage[]>([])
+
+// 一键二创模式
+const layoutMimicMode = ref(false)
 
 /**
  * 处理输入变化
@@ -187,11 +208,19 @@ function emitImagesChange() {
 }
 
 /**
+ * 处理一键二创模式变化
+ */
+function handleLayoutMimicChange() {
+  emit('layoutMimicChange', layoutMimicMode.value)
+}
+
+/**
  * 清理所有预览 URL
  */
 function clearPreviews() {
   uploadedImages.value.forEach(img => URL.revokeObjectURL(img.preview))
   uploadedImages.value = []
+  layoutMimicMode.value = false
 }
 
 // 组件卸载时清理
@@ -309,6 +338,90 @@ defineExpose({
   font-size: 12px;
   color: var(--text-sub, #666);
   text-align: right;
+}
+
+/* 一键二创选项 */
+.layout-mimic-option {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fff5f7 0%, #fff9fa 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 36, 66, 0.1);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkbox-custom {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  transition: all 0.2s;
+  position: relative;
+  margin-top: 2px;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
+  background: var(--primary, #ff2442);
+  border-color: var(--primary, #ff2442);
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 4px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-label input[type="checkbox"]:disabled + .checkbox-custom {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #1a1a1a);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.option-title::before {
+  content: '✨';
+  font-size: 16px;
+}
+
+.option-desc {
+  font-size: 12px;
+  color: var(--text-sub, #666);
+  line-height: 1.5;
 }
 
 /* 工具栏 */

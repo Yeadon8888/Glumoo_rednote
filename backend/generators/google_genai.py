@@ -333,6 +333,8 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
         temperature: float = 1.0,
         model: str = "gemini-3-pro-image-preview",
         reference_image: Optional[bytes] = None,
+        reference_images: Optional[list] = None,
+        layout_mimic_mode: bool = False,
         **kwargs
     ) -> bytes:
         """
@@ -343,33 +345,122 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
             aspect_ratio: 宽高比 (如 "3:4", "1:1", "16:9")
             temperature: 温度
             model: 模型名称
-            reference_image: 参考图片二进制数据（用于保持风格一致）
+            reference_image: 单张参考图片（向后兼容，通常是封面图）
+            reference_images: 多张参考图片列表（用户上传的图片）
             **kwargs: 其他参数
 
         Returns:
             图片二进制数据
         """
         logger.info(f"Google GenAI 生成图片: model={model}, aspect_ratio={aspect_ratio}")
-        logger.debug(f"  prompt 长度: {len(prompt)} 字符, 有参考图: {reference_image is not None}")
+
+        # 收集所有参考图片
+        all_reference_images = []
+        if reference_images and len(reference_images) > 0:
+            all_reference_images.extend(reference_images)
+        if reference_image and reference_image not in all_reference_images:
+            all_reference_images.append(reference_image)
+
+        logger.debug(f"  prompt 长度: {len(prompt)} 字符, 参考图数量: {len(all_reference_images)}")
 
         # 构建 parts 列表
         parts = []
 
-        # 如果有参考图，先添加参考图和说明
-        if reference_image:
-            logger.debug(f"  添加参考图片 ({len(reference_image)} bytes)")
-            # 压缩参考图到 200KB 以内
-            compressed_ref = compress_image(reference_image, max_size_kb=200)
-            logger.debug(f"  参考图压缩后: {len(compressed_ref)} bytes")
-            # 添加参考图
-            parts.append(types.Part(
-                inline_data=types.Blob(
-                    mime_type="image/png",
-                    data=compressed_ref
-                )
-            ))
+        # 如果有参考图，先添加所有参考图
+        if all_reference_images:
+            logger.debug(f"  添加 {len(all_reference_images)} 张参考图片")
+
+            for idx, ref_img in enumerate(all_reference_images):
+                # 压缩参考图到 200KB 以内
+                compressed_ref = compress_image(ref_img, max_size_kb=200)
+                logger.debug(f"  参考图 {idx+1}: {len(ref_img)} -> {len(compressed_ref)} bytes")
+
+                # 添加参考图
+                parts.append(types.Part(
+                    inline_data=types.Blob(
+                        mime_type="image/png",
+                        data=compressed_ref
+                    )
+                ))
+
             # 添加带参考说明的提示词
-            enhanced_prompt = f"""请参考上面这张图片的视觉风格（包括配色、排版风格、字体风格、装饰元素风格），生成一张风格一致的新图片。
+            ref_count = len(all_reference_images)
+
+            # 根据 layout_mimic_mode 选择不同的提示词
+            if layout_mimic_mode:
+                # 一键二创模式：严格模仿布局
+                if ref_count == 1:
+                    enhanced_prompt = f"""请严格模仿上面这张参考图片的布局结构和视觉风格，生成一张新图片。
+
+【核心要求：精确复刻布局】
+
+1. 布局结构（最重要）：
+   - 标题位置：观察参考图中标题在哪里（上部/中部/下部），新图必须在相同位置
+   - 标题大小：保持与参考图相同的字号比例
+   - 文字区域：保持文字块的位置和大小比例完全一致
+   - 装饰元素：如果有边框、线条、图标，保持相同位置
+   - 留白间距：保持四周边距和元素间距的比例
+
+2. 视觉风格：
+   - 配色方案：使用相同或相似的颜色
+   - 字体风格：保持字体的粗细和风格
+   - 背景处理：保持背景的简洁度和风格
+
+3. 内容替换：
+   - 只替换文字内容，不改变位置
+   - 保持文字数量相近（避免溢出）
+   - 如果有列表，保持列表项的排列方式
+
+新图片的内容要求：
+{prompt}
+
+【重要】这是一个"二创"任务，要让人一眼看出是同一个模板，只是换了内容。布局相似度必须达到90%以上。"""
+                else:
+                    enhanced_prompt = f"""请严格参考上面提供的 {ref_count} 张图片，生成一张新图片。
+
+【参考图片的作用】
+- 第1张图片：主要参考布局结构（标题位置、文字区域、装饰元素位置）
+- 其他图片：参考视觉风格、配色方案、氛围
+
+【核心要求：精确复刻布局】
+
+1. 布局结构（严格遵守第1张参考图）：
+   ✓ 标题位置：必须在相同位置（上/中/下）
+   ✓ 标题大小：保持相同的字号比例
+   ✓ 副标题位置：如果有副标题，保持相对位置
+   ✓ 文字区域：保持文字块的位置和大小比例
+   ✓ 装饰元素：边框、线条、图标保持相同位置
+   ✓ 列表排列：如果有列表，保持排列方式（横向/纵向）
+   ✓ 留白间距：保持四周边距和元素间距比例
+
+2. 视觉风格（综合所有参考图）：
+   ✓ 配色方案：提取并使用相似的颜色
+   ✓ 字体风格：保持字体的粗细和风格
+   ✓ 背景处理：保持背景的风格和质感
+   ✓ 整体氛围：保持温馨/清新/专业等氛围
+
+3. 主体元素（如果参考图中有）：
+   ✓ 如果有宠物/产品/人物，在新图中保持相似形象
+   ✓ 保持主体元素的位置和大小比例
+   ✓ 保持主体元素与文字的相对关系
+
+4. 内容替换规则：
+   ✓ 只替换文字内容，不改变位置
+   ✓ 保持文字数量相近（避免溢出或留空）
+   ✓ 保持emoji/符号的数量和位置
+
+新图片的内容要求：
+{prompt}
+
+【重要提示】
+这是一个"二创"任务，目标是创建一个看起来像同一个模板的新图片。
+- 布局相似度必须达到90%以上
+- 让人一眼看出是同一个系列
+- 只有文字内容不同，其他都要尽可能相同"""
+            else:
+                # 普通模式：参考风格但不强制布局
+                if ref_count == 1:
+                    enhanced_prompt = f"""请参考上面这张图片的视觉风格（包括配色、排版风格、字体风格、装饰元素风格），生成一张风格一致的新图片。
 
 新图片的内容要求：
 {prompt}
@@ -379,6 +470,24 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
 2. 配色方案要与参考图协调一致
 3. 排版和装饰元素的风格要统一
 4. 但内容要按照新的要求来生成"""
+                else:
+                    enhanced_prompt = f"""请参考上面提供的 {ref_count} 张图片的视觉风格，生成一张新图片。
+
+参考要点：
+- 如果图片中有特定的人物、宠物或产品，请在新图片中保持相似的形象
+- 参考图片的整体色调、配色方案和氛围
+- 参考图片的排版风格、字体风格和装饰元素
+- 保持视觉风格的一致性和连贯性
+
+新图片的内容要求：
+{prompt}
+
+重要：
+1. 综合参考所有图片的风格特征
+2. 如果参考图中有主体对象（如宠物、产品），尽量在新图中体现相似元素
+3. 保持配色和视觉风格的统一
+4. 内容要按照新的要求来生成"""
+
             parts.append(types.Part(text=enhanced_prompt))
         else:
             # 没有参考图，直接使用原始提示词

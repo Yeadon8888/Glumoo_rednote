@@ -70,6 +70,9 @@ export interface GeneratorState {
   // 用户上传的参考图片（File对象，不会被持久化）
   userImages: File[]
 
+  // 一键二创模式（是否严格模仿布局）
+  layoutMimicMode: boolean
+
   // 生成的内容数据（标题、文案、标签）
   content: GeneratedContent
 
@@ -107,6 +110,7 @@ function saveState(state: GeneratorState) {
       images: state.images,                  // 生成的图片结果
       taskId: state.taskId,                  // 任务ID
       recordId: state.recordId,              // 历史记录ID
+      layoutMimicMode: state.layoutMimicMode, // 一键二创模式
       content: state.content,                // 生成的内容（标题、文案、标签）
       outlineStatus: state.outlineStatus,    // 大纲生成状态
       lastSavedAt: state.lastSavedAt         // 最后保存时间
@@ -151,6 +155,9 @@ export const useGeneratorStore = defineStore('generator', {
 
       // 用户上传的参考图片（不从 localStorage 恢复）
       userImages: [],
+
+      // 一键二创模式
+      layoutMimicMode: saved.layoutMimicMode || false,
 
       // 生成的内容数据
       content: saved.content || {

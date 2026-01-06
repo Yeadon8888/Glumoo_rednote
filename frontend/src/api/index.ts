@@ -621,7 +621,8 @@ export async function generateImagesPost(
   onFinish: (event: FinishEvent) => void,
   onStreamError: (error: Error) => void,
   userImages?: File[],
-  userTopic?: string
+  userTopic?: string,
+  layoutMimicMode?: boolean
 ) {
   try {
     // 将用户图片转换为 base64
@@ -649,7 +650,8 @@ export async function generateImagesPost(
         task_id: taskId,
         full_outline: fullOutline,
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
-        user_topic: userTopic || ''
+        user_topic: userTopic || '',
+        layout_mimic_mode: layoutMimicMode || false
       })
     })
 

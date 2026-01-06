@@ -121,7 +121,8 @@ class ImageService:
         retry_count: int = 0,
         full_outline: str = "",
         user_images: Optional[List[bytes]] = None,
-        user_topic: str = ""
+        user_topic: str = "",
+        layout_mimic_mode: bool = False
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """
         生成单张图片（带自动重试）
@@ -165,12 +166,21 @@ class ImageService:
             # 调用生成器生成图片
             if self.provider_config.get('type') == 'google_genai':
                 logger.debug(f"  使用 Google GenAI 生成器")
+
+                # 组合参考图片：用户上传的图片 + 封面图
+                reference_images_list = []
+                if user_images:
+                    reference_images_list.extend(user_images)
+                if reference_image:
+                    reference_images_list.append(reference_image)
+
                 image_data = self.generator.generate_image(
                     prompt=prompt,
                     aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
                     temperature=self.provider_config.get('temperature', 1.0),
                     model=self.provider_config.get('model', 'gemini-3-pro-image-preview'),
-                    reference_image=reference_image,
+                    reference_images=reference_images_list if reference_images_list else None,
+                    layout_mimic_mode=layout_mimic_mode
                 )
             elif self.provider_config.get('type') == 'image_api':
                 logger.debug(f"  使用 Image API 生成器")
@@ -216,7 +226,8 @@ class ImageService:
         task_id: str = None,
         full_outline: str = "",
         user_images: Optional[List[bytes]] = None,
-        user_topic: str = ""
+        user_topic: str = "",
+        layout_mimic_mode: bool = False
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -228,6 +239,7 @@ class ImageService:
             full_outline: 完整的大纲文本（用于保持风格一致）
             user_images: 用户上传的参考图片列表（可选）
             user_topic: 用户原始输入（用于保持意图一致）
+            layout_mimic_mode: 一键二创模式（严格模仿布局）
 
         Yields:
             进度事件字典
@@ -260,7 +272,8 @@ class ImageService:
             "cover_image": None,
             "full_outline": full_outline,
             "user_images": compressed_user_images,
-            "user_topic": user_topic
+            "user_topic": user_topic,
+            "layout_mimic_mode": layout_mimic_mode
         }
 
         # ==================== 第一阶段：生成封面 ====================
@@ -295,7 +308,8 @@ class ImageService:
             # 生成封面（使用用户上传的图片作为参考）
             index, success, filename, error = self._generate_single_image(
                 cover_page, task_id, reference_image=None, full_outline=full_outline,
-                user_images=compressed_user_images, user_topic=user_topic
+                user_images=compressed_user_images, user_topic=user_topic,
+                layout_mimic_mode=layout_mimic_mode
             )
 
             if success:
@@ -365,7 +379,8 @@ class ImageService:
                             0,  # retry_count
                             full_outline,  # 传入完整大纲
                             compressed_user_images,  # 用户上传的参考图片（已压缩）
-                            user_topic  # 用户原始输入
+                            user_topic,  # 用户原始输入
+                            layout_mimic_mode  # 一键二创模式
                         ): page
                         for page in other_pages
                     }
@@ -466,7 +481,8 @@ class ImageService:
                         0,
                         full_outline,
                         compressed_user_images,
-                        user_topic
+                        user_topic,
+                        layout_mimic_mode
                     )
 
                     if success:
@@ -566,7 +582,8 @@ class ImageService:
             0,
             full_outline,
             user_images,
-            user_topic
+            user_topic,
+            task_state.get("layout_mimic_mode", False)  # 从任务状态获取
         )
 
         if success:
@@ -621,10 +638,12 @@ class ImageService:
         }
 
         # 并发重试
-        # 从任务状态中获取完整大纲
-        full_outline = ""
-        if task_id in self._task_states:
-            full_outline = self._task_states[task_id].get("full_outline", "")
+        # 从任务状态中获取完整大纲和其他参数
+        task_state = self._task_states.get(task_id, {})
+        full_outline = task_state.get("full_outline", "")
+        user_images = task_state.get("user_images")
+        user_topic = task_state.get("user_topic", "")
+        layout_mimic_mode = task_state.get("layout_mimic_mode", False)
 
         with ThreadPoolExecutor(max_workers=self.MAX_CONCURRENT) as executor:
             future_to_page = {
@@ -634,7 +653,10 @@ class ImageService:
                     task_id,
                     reference_image,
                     0,  # retry_count
-                    full_outline  # 传入完整大纲
+                    full_outline,  # 传入完整大纲
+                    user_images,  # 用户上传的参考图片
+                    user_topic,  # 用户原始输入
+                    layout_mimic_mode  # 一键二创模式
                 ): page
                 for page in pages
             }

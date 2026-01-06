@@ -24,6 +24,7 @@
         :loading="loading"
         @generate="handleGenerate"
         @imagesChange="handleImagesChange"
+        @layoutMimicChange="handleLayoutMimicChange"
       />
     </div>
 
@@ -70,11 +71,22 @@ const composerRef = ref<InstanceType<typeof ComposerInput> | null>(null)
 // 上传的图片文件
 const uploadedImageFiles = ref<File[]>([])
 
+// 一键二创模式
+const layoutMimicMode = ref(false)
+
 /**
  * 处理图片变化
  */
 function handleImagesChange(images: File[]) {
   uploadedImageFiles.value = images
+}
+
+/**
+ * 处理一键二创模式变化
+ */
+function handleLayoutMimicChange(enabled: boolean) {
+  layoutMimicMode.value = enabled
+  console.log('一键二创模式:', enabled ? '已启用' : '已关闭')
 }
 
 /**
@@ -130,6 +142,9 @@ async function handleGenerate() {
       } else {
         store.userImages = []
       }
+
+      // 保存一键二创模式到 store
+      store.layoutMimicMode = layoutMimicMode.value
 
       // 清理 ComposerInput 的预览
       composerRef.value?.clearPreviews()
