@@ -1,10 +1,17 @@
 # 图片生成服务配置
-# 请在 Web 界面的"设置"页面中配置 API Key
-active_provider: default
+#
+# 部署说明：
+# 1. 本地 Docker: 挂载包含 API Key 的 image_providers.yaml 文件
+# 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
+# 3. Web 界面: 在"系统设置"页面配置 API Key
+#
+active_provider: gemini
+
 providers:
-  default:
-    api_key: ""
-    base_url: https://api.openai.com/v1
-    high_concurrency: false
-    model: dall-e-3
-    type: image_api
+  # Google Gemini 图片生成
+  gemini:
+    type: google_genai
+    api_key: ""  # 留空，从环境变量 GOOGLE_API_KEY 读取
+    model: gemini-2.0-flash-exp-image-generation
+    high_concurrency: false  # 是否启用高并发，GCP 300$ 试用账号不建议启用
+

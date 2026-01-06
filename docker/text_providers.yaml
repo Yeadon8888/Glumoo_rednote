@@ -1,11 +1,18 @@
 # 文本生成服务配置
-# 请在 Web 界面的"设置"页面中配置 API Key
-active_provider: default
+#
+# 部署说明：
+# 1. 本地 Docker: 挂载包含 API Key 的 text_providers.yaml 文件
+# 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
+# 3. Web 界面: 在"系统设置"页面配置 API Key
+#
+active_provider: gemini
+
 providers:
-  default:
-    api_key: ""
-    base_url: https://api.openai.com/v1
+  # Google Gemini（原生接口）
+  gemini:
+    type: google_gemini
+    api_key: ""  # 留空，从环境变量 GOOGLE_API_KEY 读取
+    model: gemini-2.0-flash-exp
+    temperature: 1.0
     max_output_tokens: 8000
-    model: gpt-4o
-    temperature: 1
-    type: openai_compatible
+

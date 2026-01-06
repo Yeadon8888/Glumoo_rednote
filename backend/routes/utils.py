@@ -29,9 +29,20 @@ def log_request(endpoint: str, data: dict = None):
 
         # 对图片数据只显示数量
         if 'images' in data:
-            safe_data['images'] = f"[{len(data['images'])} 张图片]"
+            if isinstance(data['images'], (list, tuple)):
+                safe_data['images'] = f"[{len(data['images'])} 张图片]"
+            elif isinstance(data['images'], int):
+                safe_data['images'] = f"[{data['images']} 张图片]"
+            else:
+                safe_data['images'] = str(data['images'])
+
         if 'user_images' in data:
-            safe_data['user_images'] = f"[{len(data['user_images'])} 张图片]"
+            if isinstance(data['user_images'], (list, tuple)):
+                safe_data['user_images'] = f"[{len(data['user_images'])} 张图片]"
+            elif isinstance(data['user_images'], int):
+                safe_data['user_images'] = f"[{data['user_images']} 张图片]"
+            else:
+                safe_data['user_images'] = str(data['user_images'])
 
         logger.debug(f"  请求数据: {safe_data}")
 
