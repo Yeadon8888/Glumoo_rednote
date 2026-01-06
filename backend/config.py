@@ -9,7 +9,12 @@ class Config:
     DEBUG = True
     HOST = '0.0.0.0'
     PORT = 12398
-    CORS_ORIGINS = ['http://localhost:5173', 'http://localhost:3000']
+    CORS_ORIGINS = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://redink.yourdomain.com',  # 替换为你的实际域名
+        'https://*.yourdomain.com',  # 支持所有子域名（可选）
+    ]
     OUTPUT_DIR = 'output'
 
     _image_providers_config = None

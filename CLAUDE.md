@@ -61,7 +61,21 @@ docker run -d -p 12398:12398 -v ./history:/app/history -v ./output:/app/output h
 
 ### Testing
 
-The project has backend unit tests located in `tests/`. Run with pytest (though test runner commands aren't explicitly documented in the codebase - use standard pytest commands).
+```bash
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run specific test file
+pytest tests/test_specific.py
+
+# Run with coverage
+pytest --cov=backend
+```
+
+Tests are located in `tests/` with shared fixtures in `tests/conftest.py`.
 
 ## Architecture
 
@@ -91,13 +105,20 @@ backend/
 │   ├── google_genai.py       # Google Gemini image generator
 │   ├── openai_compatible.py  # OpenAI-compatible API generator
 │   └── image_api.py          # Generic image API generator
-├── prompts/            # AI prompt templates
+├── prompts/            # AI prompt templates (text files)
+│   ├── outline_prompt.txt       # Outline generation template
+│   ├── image_prompt.txt         # Full image generation template
+│   ├── image_prompt_short.txt   # Short image generation template
+│   └── content_prompt.txt       # Content (title/text/tags) generation template
 └── utils/              # Shared utilities
 ```
 
 **Key Design Patterns:**
 - **Factory Pattern**: `ImageGeneratorFactory` creates appropriate generator based on `provider.type` from YAML config
 - **Blueprint Modularity**: Routes are split by domain (outline, images, history, config, content) and registered to a main API blueprint
+  - Each route module has a `create_<name>_blueprint()` function that returns a new Blueprint instance
+  - This pattern supports multiple `create_app()` calls (important for testing)
+  - All blueprints registered to main `/api` Blueprint in `routes/__init__.py`
 - **Service Layer**: Business logic separated from routes for testability
 
 ### Frontend Structure (Vue 3 + Pinia)
@@ -126,6 +147,8 @@ frontend/src/
 **State Management:**
 - Single Pinia store (`generator.ts`) manages all app state: outline, images, history, config
 - Store methods handle API calls and state updates
+- State persisted to localStorage to survive page refreshes
+- State flow: `input` → `outline` → `generating` → `result`
 
 ### Configuration System
 
@@ -213,7 +236,13 @@ Custom logging format in `app.py:setup_logging()`:
 
 ### Modifying AI Prompts
 
-Prompts are located in `backend/prompts/` - update templates there to change AI generation behavior.
+Prompts are stored as plain text files in `backend/prompts/`:
+- `outline_prompt.txt` - Controls outline structure and format
+- `image_prompt.txt` - Main image generation prompt
+- `image_prompt_short.txt` - Simplified image generation prompt
+- `content_prompt.txt` - Template for title/text/tags generation
+
+Edit these files directly to modify AI generation behavior. No code changes required.
 
 ## API Endpoints Reference
 
