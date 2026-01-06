@@ -163,6 +163,12 @@ async function handleGenerate() {
   store.startContentGeneration()
 
   try {
+    // 调试日志：打印传递的参数
+    console.log('📝 生成内容 - 传递的参数：')
+    console.log('  topic:', store.topic)
+    console.log('  outline.raw 长度:', store.outline.raw.length)
+    console.log('  outline.raw 前200字:', store.outline.raw.substring(0, 200))
+
     const result = await generateContent(store.topic, store.outline.raw)
 
     if (result.success && result.titles && result.copywriting && result.tags) {

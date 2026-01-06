@@ -157,12 +157,18 @@ class ContentService:
         """
         try:
             logger.info(f"开始生成内容: topic={topic[:50]}...")
+            logger.debug(f"  完整主题: {topic}")
+            logger.debug(f"  大纲长度: {len(outline)} 字符")
+            logger.debug(f"  大纲内容（前200字）: {outline[:200]}...")
 
             # 构建提示词
             prompt = self.prompt_template.format(
                 topic=topic,
                 outline=outline
             )
+
+            logger.debug(f"  构建的 Prompt 长度: {len(prompt)} 字符")
+            logger.debug(f"  Prompt 前500字: {prompt[:500]}...")
 
             # 从配置中获取模型参数
             active_provider = self.text_config.get('active_provider', 'google_gemini')
