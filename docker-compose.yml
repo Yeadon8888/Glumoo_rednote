@@ -8,7 +8,7 @@ services:
       # 持久化数据目录
       - ./history:/app/history
       - ./output:/app/output
-      # 可选：挂载自定义配置文件
-      # - ./text_providers.yaml:/app/text_providers.yaml
-      # - ./image_providers.yaml:/app/image_providers.yaml
+      # 挂载预设的模型配置文件（包含 API Key）
+      - ./text_providers.yaml:/app/text_providers.yaml
+      - ./image_providers.yaml:/app/image_providers.yaml
     restart: unless-stopped

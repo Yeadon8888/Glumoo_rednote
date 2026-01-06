@@ -99,7 +99,7 @@ import { ref, onUnmounted } from 'vue'
  *
  * 功能：
  * - 主题文本输入（自动调整高度）
- * - 参考图片上传（最多5张）
+ * - 参考图片上传（最多8张）
  * - 生成按钮
  */
 
@@ -170,8 +170,8 @@ function handleImageUpload(event: Event) {
 
   const files = Array.from(target.files)
   files.forEach((file) => {
-    // 限制最多 5 张图片
-    if (uploadedImages.value.length >= 5) {
+    // 限制最多 8 张图片
+    if (uploadedImages.value.length >= 8) {
       return
     }
     // 创建预览 URL
