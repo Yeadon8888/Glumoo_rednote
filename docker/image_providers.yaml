@@ -12,6 +12,6 @@ providers:
   gemini:
     type: google_genai
     api_key: ""  # 留空，从环境变量 GOOGLE_API_KEY 读取
-    model: gemini-2.0-flash-exp-image-generation
+    model: gemini-3-pro-image-preview
     high_concurrency: false  # 是否启用高并发，GCP 300$ 试用账号不建议启用
 
