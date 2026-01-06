@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 from pathlib import Path
 from flask import Flask, send_from_directory
 from flask_cors import CORS
@@ -116,10 +117,15 @@ def _validate_config_on_startup(logger):
             # 检查激活的服务商是否有 API Key
             if active in text_config.get('providers', {}):
                 provider = text_config['providers'][active]
-                if not provider.get('api_key'):
+                # 检查配置文件或环境变量
+                env_api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+                if not provider.get('api_key') and not env_api_key:
                     logger.warning(f"⚠️  文本服务商 [{active}] 未配置 API Key")
                 else:
-                    logger.info(f"✅ 文本服务商 [{active}] API Key 已配置")
+                    if env_api_key:
+                        logger.info(f"✅ 文本服务商 [{active}] API Key 已配置（来自环境变量）")
+                    else:
+                        logger.info(f"✅ 文本服务商 [{active}] API Key 已配置")
         except Exception as e:
             logger.error(f"❌ 读取 text_providers.yaml 失败: {e}")
     else:
@@ -138,10 +144,15 @@ def _validate_config_on_startup(logger):
             # 检查激活的服务商是否有 API Key
             if active in image_config.get('providers', {}):
                 provider = image_config['providers'][active]
-                if not provider.get('api_key'):
+                # 检查配置文件或环境变量
+                env_api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+                if not provider.get('api_key') and not env_api_key:
                     logger.warning(f"⚠️  图片服务商 [{active}] 未配置 API Key")
                 else:
-                    logger.info(f"✅ 图片服务商 [{active}] API Key 已配置")
+                    if env_api_key:
+                        logger.info(f"✅ 图片服务商 [{active}] API Key 已配置（来自环境变量）")
+                    else:
+                        logger.info(f"✅ 图片服务商 [{active}] API Key 已配置")
         except Exception as e:
             logger.error(f"❌ 读取 image_providers.yaml 失败: {e}")
     else:
