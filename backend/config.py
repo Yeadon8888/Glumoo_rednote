@@ -7,9 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class Config:
-    DEBUG = True
-    HOST = '0.0.0.0'
-    PORT = 12398
+    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
+    HOST = os.getenv('FLASK_HOST', '0.0.0.0')
+    # Railway 会提供 PORT 环境变量，必须使用它
+    PORT = int(os.getenv('PORT', os.getenv('FLASK_PORT', '12398')))
     CORS_ORIGINS = [
         'http://localhost:5173',
         'http://localhost:3000',

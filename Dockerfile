@@ -66,5 +66,6 @@ EXPOSE 12398
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:12398/api/health')" || exit 1
 
-# 启动命令
-CMD ["uv", "run", "python", "-m", "backend.app"]
+# 启动命令 - 使用 gunicorn 作为生产级 WSGI 服务器
+# 使用 shell 形式以支持环境变量扩展
+CMD uv run gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - "backend.app:create_app()"
