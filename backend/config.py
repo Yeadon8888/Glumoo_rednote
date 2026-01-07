@@ -7,23 +7,16 @@ logger = logging.getLogger(__name__)
 
 
 class Config:
-    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
-    HOST = os.getenv('FLASK_HOST', '0.0.0.0')
-    # Railway 会提供 PORT 环境变量，必须使用它
-    PORT = int(os.getenv('PORT', os.getenv('FLASK_PORT', '12398')))
+    DEBUG = True
+    HOST = '0.0.0.0'
+    PORT = 12398
     CORS_ORIGINS = [
         'http://localhost:5173',
         'http://localhost:3000',
         'https://redink.yourdomain.com',  # 替换为你的实际域名
         'https://*.yourdomain.com',  # 支持所有子域名（可选）
     ]
-
-    # 数据目录配置（统一存储在 data 目录下，便于 Railway 单卷挂载）
-    # 使用绝对路径，基于项目根目录
-    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATA_DIR = os.getenv('DATA_DIR', os.path.join(_project_root, 'data'))
-    OUTPUT_DIR = os.path.join(DATA_DIR, 'output')  # 生成的图片
-    HISTORY_DIR = os.path.join(DATA_DIR, 'history')  # 历史记录
+    OUTPUT_DIR = 'output'
 
     _image_providers_config = None
     _text_providers_config = None

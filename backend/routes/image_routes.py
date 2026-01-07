@@ -15,7 +15,6 @@ import base64
 import logging
 from flask import Blueprint, request, jsonify, Response, send_file
 from backend.services.image import get_image_service
-from backend.config import Config
 from .utils import log_request, log_error
 
 logger = logging.getLogger(__name__)
@@ -131,8 +130,11 @@ def create_image_blueprint():
             # 检查是否请求缩略图
             thumbnail = request.args.get('thumbnail', 'true').lower() == 'true'
 
-            # 使用配置中的 HISTORY_DIR
-            history_root = Config.HISTORY_DIR
+            # 构建 history 目录路径
+            history_root = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "history"
+            )
 
             if thumbnail:
                 # 尝试返回缩略图

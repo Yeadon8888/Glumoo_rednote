@@ -51,19 +51,20 @@ COPY docker/image_providers.yaml ./
 # 从构建阶段复制前端产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# 创建数据目录（统一存储在 data 目录下，便于 Railway 单卷挂载）
-RUN mkdir -p data/output data/history
+# 创建数据目录
+RUN mkdir -p output history
 
 # 设置环境变量
 ENV FLASK_DEBUG=False
 ENV FLASK_HOST=0.0.0.0
 ENV FLASK_PORT=12398
-ENV PYTHONPATH=/app
 
 # 暴露端口
 EXPOSE 12398
 
-# 注意：不使用 Docker HEALTHCHECK，让 Railway 使用自己的健康检查机制
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:12398/api/health')" || exit 1
 
-# 启动命令 - 直接使用 venv 中的 gunicorn，避免 uv run 的包同步延迟
-CMD ["sh", "-c", ".venv/bin/gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - 'backend.app:app'"]
+# 启动命令
+CMD ["uv", "run", "python", "-m", "backend.app"]

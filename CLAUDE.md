@@ -4,13 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Glumoo 是一个专注于小红书和 Instagram 宠物内容创作的 AI 图文生成Agent。它使用 AI 模型生成大纲、内容文本（标题、正文、标签）和风格化图片，支持多平台风格切换。
+Glumoo 是一个专注于小红书宠物内容创作的 AI 图文生成Agent。它使用 AI 模型生成大纲、内容文本（标题、正文、标签）和风格化图片。
 
 **Tech Stack:**
-- **Backend**: Python 3.11+ with Flask + Gunicorn, managed by `uv` package manager
+- **Backend**: Python 3.11+ with Flask, managed by `uv` package manager
 - **Frontend**: Vue 3 + TypeScript + Vite + Pinia
 - **AI Providers**: Google Gemini for text generation, configurable image generation (Google GenAI, OpenAI-compatible APIs)
-- **Deployment**: Docker, Railway (with Volume support for data persistence)
 
 ## Development Commands
 
@@ -53,20 +52,12 @@ start.bat
 ### Docker
 
 ```bash
-# Build and run locally
+# Run with docker-compose
 docker-compose up -d
 
-# Build without cache
-docker-compose build --no-cache
-
-# View logs
-docker logs glumoo-pet-agent --tail 50
-
-# Stop and remove
-docker-compose down
+# Or run directly
+docker run -d -p 12398:12398 -v ./history:/app/history -v ./output:/app/output histonemax/redink:latest
 ```
-
-**Important**: Docker uses volume mapping `./data:/app/data` for persistent storage.
 
 ### Testing
 
@@ -115,12 +106,10 @@ backend/
 │   ├── openai_compatible.py  # OpenAI-compatible API generator
 │   └── image_api.py          # Generic image API generator
 ├── prompts/            # AI prompt templates (text files)
-│   ├── outline_prompt.txt              # Xiaohongshu outline generation
-│   ├── outline_prompt_instagram.txt    # Instagram outline generation (English)
-│   ├── image_prompt.txt                # Full image generation template
-│   ├── image_prompt_short.txt          # Short image generation template
-│   ├── content_prompt.txt              # Xiaohongshu content generation
-│   └── content_prompt_instagram.txt    # Instagram content generation (English)
+│   ├── outline_prompt.txt       # Outline generation template
+│   ├── image_prompt.txt         # Full image generation template
+│   ├── image_prompt_short.txt   # Short image generation template
+│   └── content_prompt.txt       # Content (title/text/tags) generation template
 └── utils/              # Shared utilities
 ```
 
@@ -178,42 +167,6 @@ Two YAML config files (auto-loaded or web UI editable):
 - `backend/config.py` loads YAML on startup with caching (`_image_providers_config`, `_text_providers_config`)
 - `Config.reload_config()` clears cache when config is updated via web UI
 - Config API at `/api/config` supports GET/PUT for runtime updates
-- **Environment Variables**: Supports `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `PORT`, `FLASK_HOST`, `FLASK_DEBUG`, `DATA_DIR`
-
-### Data Directory Structure
-
-**CRITICAL**: All persistent data is stored in a unified `/app/data` directory to support Railway's single-volume limitation:
-
-```
-/app/data/                    # Single volume mount point
-├── history/                  # Historical records directory
-│   ├── index.json           # History record index
-│   ├── <record_id>.json     # Individual history records
-│   └── <task_id>/           # Task-related files (images)
-└── output/                   # Image output directory (legacy, may be merged)
-```
-
-**Path Configuration** (`backend/config.py`):
-- `DATA_DIR`: Absolute path to data directory (defaults to `{project_root}/data`)
-- `HISTORY_DIR`: `{DATA_DIR}/history`
-- `OUTPUT_DIR`: `{DATA_DIR}/output`
-- Uses absolute paths calculated from `__file__` to ensure reliability across environments
-
-### Platform Support (Xiaohongshu vs Instagram)
-
-The application supports generating content for two platforms with different styles:
-
-**Implementation:**
-- Frontend: Platform selector dropdown in `ComposerInput.vue`, state managed in Pinia store
-- Backend: Dynamic prompt loading based on `platform` parameter ('xiaohongshu' | 'instagram')
-- Routes: `outline_routes.py` and `content_routes.py` extract `platform` from request
-- Services: `outline.py` and `content.py` use `_load_prompt_template(platform)` to load appropriate prompts
-
-**Prompt Files:**
-- Xiaohongshu: `outline_prompt.txt`, `content_prompt.txt` (Chinese)
-- Instagram: `outline_prompt_instagram.txt`, `content_prompt_instagram.txt` (English)
-
-**Default**: `platform='xiaohongshu'` if not specified
 
 ### Image Generation Flow
 
@@ -229,58 +182,6 @@ The application supports generating content for two platforms with different sty
 - Core method: `generate_image(prompt, outline_context, cover_image_path, index)` → saves to `output/` and returns filename
 - Generator type selected by `ImageGeneratorFactory.create(provider_type, config)`
 
-### Production Deployment
-
-#### Gunicorn Configuration
-
-The application uses Gunicorn as the production WSGI server (configured in Dockerfile):
-
-```dockerfile
-CMD uv run gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - "backend.app:app"
-```
-
-**Key Points:**
-- Uses `${PORT}` environment variable (provided by Railway) or falls back to `12398`
-- 2 workers with 4 threads each for handling concurrent requests
-- 120s timeout for long-running image generation requests
-- Logs to stdout/stderr for container environments
-- Entry point is `backend.app:app` (the Flask app created by `create_app()`)
-
-**CRITICAL**: The `backend/app.py` must export an `app` variable at module level for Gunicorn:
-```python
-# At bottom of backend/app.py
-app = create_app()  # Required for Gunicorn
-```
-
-#### Railway Deployment
-
-**Environment Variables Required:**
-- `GOOGLE_API_KEY` or `GEMINI_API_KEY`: API key for AI services
-- `PORT`: Automatically provided by Railway (DO NOT override)
-
-**Volume Configuration:**
-- Railway supports only ONE volume per service
-- Mount Path: `/app/data`
-- This single volume contains both `history/` and `output/` subdirectories
-
-**Deployment Steps:**
-1. Push code to GitHub
-2. Railway auto-deploys from main branch
-3. In Railway Dashboard → Settings → Volumes:
-   - Add Volume with Mount Path: `/app/data`
-4. Set environment variable `GOOGLE_API_KEY` in Variables section
-5. Railway will automatically redeploy
-
-**Health Check:**
-- Path: `/api/health` (configured in `railway.toml`)
-- Timeout: 30s
-- The healthcheck endpoint is in `image_routes.py:health_check()`
-
-**Common Issues:**
-- Healthcheck failure: Check that `PORT` environment variable is properly read and app binds to it
-- Data persistence: Ensure volume is mounted at `/app/data` (not `/app/history` or `/app/output`)
-- Path errors: All path references must use `Config.HISTORY_DIR` / `Config.DATA_DIR`, never hardcoded paths
-
 ### History Persistence
 
 - Records saved to `history/` directory (JSON metadata + image references)
@@ -288,32 +189,6 @@ app = create_app()  # Required for Gunicorn
 - History routes provide CRUD operations + search
 
 ## Important Notes
-
-### Port Binding for Production
-
-**CRITICAL**: When deploying to cloud platforms (Railway, Heroku, etc.):
-- The platform provides a `PORT` environment variable that MUST be used
-- `backend/config.py` reads `PORT` env var first, falls back to `FLASK_PORT`, then `12398`
-- Gunicorn CMD in Dockerfile uses `${PORT:-12398}` for shell-level port binding
-- Flask app uses `Config.PORT` which resolves the environment variable hierarchy
-
-### Path Configuration Best Practices
-
-**ALWAYS use Config constants for paths:**
-```python
-# ✅ CORRECT
-from backend.config import Config
-history_path = Config.HISTORY_DIR
-
-# ❌ WRONG - Hardcoded paths will break in production
-history_path = "history"
-history_path = os.path.join(os.path.dirname(__file__), "../../history")
-```
-
-**Why absolute paths matter:**
-- Docker containers may start with different working directories
-- Railway deployment uses different directory structures
-- Relative paths are unreliable in production environments
 
 ### Configuration Validation
 
@@ -362,48 +237,27 @@ Custom logging format in `app.py:setup_logging()`:
 ### Modifying AI Prompts
 
 Prompts are stored as plain text files in `backend/prompts/`:
-
-**Xiaohongshu (Chinese):**
 - `outline_prompt.txt` - Controls outline structure and format
-- `content_prompt.txt` - Template for title/text/tags generation
-
-**Instagram (English):**
-- `outline_prompt_instagram.txt` - Instagram carousel post structure
-- `content_prompt_instagram.txt` - Instagram caption with hashtags
-
-**Image Generation (Platform-agnostic):**
 - `image_prompt.txt` - Main image generation prompt
 - `image_prompt_short.txt` - Simplified image generation prompt
+- `content_prompt.txt` - Template for title/text/tags generation
 
-Edit these files directly to modify AI generation behavior. No code changes required. The service layer automatically loads the correct prompt based on the `platform` parameter.
+Edit these files directly to modify AI generation behavior. No code changes required.
 
 ## API Endpoints Reference
 
 All endpoints under `/api` prefix:
 
-**Content Generation:**
-- `POST /api/outline` - Generate outline from user input (supports `platform` parameter)
-- `POST /api/content` - Generate title, copywriting, and tags (supports `platform` parameter)
-- `POST /api/generate` - Generate images from outline (SSE stream)
+- `POST /api/outline` - Generate outline from user input
+- `POST /api/generate` - Generate images from outline
 - `POST /api/regenerate_image` - Regenerate single image
-
-**Images:**
-- `GET /api/images/<task_id>/<filename>` - Serve generated images
-- Query param `?thumbnail=true/false` for thumbnail vs full image
-
-**History:**
-- `GET /api/history` - List history records (pagination support)
+- `GET /api/images/<filename>` - Serve generated images
+- `GET /api/history` - List history records
 - `POST /api/history` - Save new record
 - `GET /api/history/<record_id>` - Get specific record
-- `PUT /api/history/<record_id>` - Update record
 - `DELETE /api/history/<record_id>` - Delete record
-- `GET /api/history/<record_id>/exists` - Check if record exists
-- `GET /api/history/search?keyword=<query>` - Search records
-- `GET /api/history/stats` - Get statistics
-
-**Configuration:**
 - `GET /api/config` - Get provider configs (API keys masked)
 - `PUT /api/config` - Update provider configs
-
-**Health:**
-- `GET /api/health` - Health check endpoint (returns `{"success": true, "message": "服务正常运行"}`)
+- `POST /api/content/title` - Generate title
+- `POST /api/content/text` - Generate body text
+- `POST /api/content/tags` - Generate tags
