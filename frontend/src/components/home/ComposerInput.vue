@@ -76,6 +76,18 @@
           </svg>
           <span v-if="uploadedImages.length > 0" class="badge-count">{{ uploadedImages.length }}</span>
         </label>
+
+        <!-- 平台选择下拉框 -->
+        <select
+          class="platform-select"
+          v-model="selectedPlatform"
+          @change="handlePlatformChange"
+          :disabled="loading"
+          title="选择内容平台风格"
+        >
+          <option value="xiaohongshu">小红书</option>
+          <option value="instagram">Instagram</option>
+        </select>
       </div>
       <div class="toolbar-right">
         <button
@@ -121,6 +133,7 @@ const emit = defineEmits<{
   (e: 'generate'): void
   (e: 'imagesChange', images: File[]): void
   (e: 'layoutMimicChange', enabled: boolean): void
+  (e: 'platformChange', platform: string): void
 }>()
 
 // 输入框引用
@@ -131,6 +144,9 @@ const uploadedImages = ref<UploadedImage[]>([])
 
 // 一键二创模式
 const layoutMimicMode = ref(false)
+
+// 平台选择（默认小红书）
+const selectedPlatform = ref('xiaohongshu')
 
 /**
  * 处理输入变化
@@ -212,6 +228,13 @@ function emitImagesChange() {
  */
 function handleLayoutMimicChange() {
   emit('layoutMimicChange', layoutMimicMode.value)
+}
+
+/**
+ * 处理平台选择变化
+ */
+function handlePlatformChange() {
+  emit('platformChange', selectedPlatform.value)
 }
 
 /**
@@ -437,6 +460,36 @@ defineExpose({
 .toolbar-left {
   display: flex;
   gap: 8px;
+}
+
+/* 平台选择下拉框 */
+.platform-select {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  background: white;
+  color: #333;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.platform-select:hover {
+  border-color: var(--primary, #ff2442);
+}
+
+.platform-select:focus {
+  border-color: var(--primary, #ff2442);
+  box-shadow: 0 0 0 3px rgba(255, 36, 66, 0.1);
+}
+
+.platform-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f5f5f5;
 }
 
 .tool-btn {

@@ -25,6 +25,7 @@
         @generate="handleGenerate"
         @imagesChange="handleImagesChange"
         @layoutMimicChange="handleLayoutMimicChange"
+        @platformChange="handlePlatformChange"
       />
     </div>
 
@@ -90,6 +91,14 @@ function handleLayoutMimicChange(enabled: boolean) {
 }
 
 /**
+ * 处理平台风格变化
+ */
+function handlePlatformChange(platform: string) {
+  store.setPlatform(platform as 'xiaohongshu' | 'instagram')
+  console.log('平台风格切换为:', platform === 'xiaohongshu' ? '小红书' : 'Instagram')
+}
+
+/**
  * 生成大纲
  */
 async function handleGenerate() {
@@ -103,7 +112,8 @@ async function handleGenerate() {
 
     const result = await generateOutline(
       topic.value.trim(),
-      imageFiles.length > 0 ? imageFiles : undefined
+      imageFiles.length > 0 ? imageFiles : undefined,
+      store.platform  // 传递平台风格参数
     )
 
     if (result.success && result.pages) {

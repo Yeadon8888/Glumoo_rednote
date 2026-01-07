@@ -166,10 +166,11 @@ async function handleGenerate() {
     // 调试日志：打印传递的参数
     console.log('📝 生成内容 - 传递的参数：')
     console.log('  topic:', store.topic)
+    console.log('  platform:', store.platform)
     console.log('  outline.raw 长度:', store.outline.raw.length)
     console.log('  outline.raw 前200字:', store.outline.raw.substring(0, 200))
 
-    const result = await generateContent(store.topic, store.outline.raw)
+    const result = await generateContent(store.topic, store.outline.raw, store.platform)
 
     if (result.success && result.titles && result.copywriting && result.tags) {
       store.setContent(result.titles, result.copywriting, result.tags)

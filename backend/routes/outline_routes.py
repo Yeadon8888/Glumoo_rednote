@@ -42,9 +42,9 @@ def create_outline_blueprint():
 
         try:
             # 解析请求数据
-            topic, images = _parse_outline_request()
+            topic, images, platform = _parse_outline_request()
 
-            log_request('/outline', {'topic': topic, 'images': images})
+            log_request('/outline', {'topic': topic, 'images': images, 'platform': platform})
 
             # 验证必填参数
             if not topic:
@@ -55,9 +55,9 @@ def create_outline_blueprint():
                 }), 400
 
             # 调用大纲生成服务
-            logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
+            logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}..., 平台: {platform}")
             outline_service = get_outline_service()
-            result = outline_service.generate_outline(topic, images if images else None)
+            result = outline_service.generate_outline(topic, images if images else None, platform)
 
             # 记录结果
             elapsed = time.time() - start_time
@@ -88,11 +88,12 @@ def _parse_outline_request():
     2. application/json - 用于 base64 图片
 
     返回：
-        tuple: (topic, images) - 主题和图片列表
+        tuple: (topic, images, platform) - 主题、图片列表和平台类型
     """
     # 检查是否是 multipart/form-data（带图片文件）
     if request.content_type and 'multipart/form-data' in request.content_type:
         topic = request.form.get('topic')
+        platform = request.form.get('platform', 'xiaohongshu')  # 默认小红书
         images = []
 
         # 获取上传的图片文件
@@ -103,11 +104,12 @@ def _parse_outline_request():
                     image_data = file.read()
                     images.append(image_data)
 
-        return topic, images
+        return topic, images, platform
 
     # JSON 请求（无图片或 base64 图片）
     data = request.get_json()
     topic = data.get('topic')
+    platform = data.get('platform', 'xiaohongshu')  # 默认小红书
     images = []
 
     # 支持 base64 格式的图片
@@ -119,4 +121,4 @@ def _parse_outline_request():
                 img_b64 = img_b64.split(',')[1]
             images.append(base64.b64decode(img_b64))
 
-    return topic, images
+    return topic, images, platform

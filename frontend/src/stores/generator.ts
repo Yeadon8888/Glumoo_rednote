@@ -45,6 +45,9 @@ export interface GeneratorState {
   // 用户输入的主题
   topic: string
 
+  // 平台风格：xiaohongshu-小红书, instagram-Instagram
+  platform: 'xiaohongshu' | 'instagram'
+
   // 大纲数据（包含原始文本和解析后的页面列表）
   outline: {
     raw: string      // 原始大纲文本
@@ -105,6 +108,7 @@ function saveState(state: GeneratorState) {
     const toSave = {
       stage: state.stage,                    // 当前阶段
       topic: state.topic,                    // 用户输入的主题
+      platform: state.platform,              // 平台风格
       outline: state.outline,                // 大纲数据
       progress: state.progress,              // 生成进度
       images: state.images,                  // 生成的图片结果
@@ -130,6 +134,9 @@ export const useGeneratorStore = defineStore('generator', {
 
       // 用户输入的主题
       topic: saved.topic || '',
+
+      // 平台风格（默认小红书）
+      platform: saved.platform || 'xiaohongshu',
 
       // 大纲数据
       outline: saved.outline || {
@@ -182,6 +189,15 @@ export const useGeneratorStore = defineStore('generator', {
      */
     setTopic(topic: string) {
       this.topic = topic
+    },
+
+    /**
+     * 设置平台风格
+     * @param platform 平台类型：xiaohongshu 或 instagram
+     */
+    setPlatform(platform: 'xiaohongshu' | 'instagram') {
+      this.platform = platform
+      saveState(this)
     },
 
     /**

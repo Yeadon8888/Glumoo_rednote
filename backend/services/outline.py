@@ -15,7 +15,7 @@ class OutlineService:
         logger.debug("初始化 OutlineService...")
         self.text_config = self._load_text_config()
         self.client = self._get_client()
-        self.prompt_template = self._load_prompt_template()
+        # 不再在初始化时加载 prompt，而是在生成时根据 platform 动态加载
         logger.info(f"OutlineService 初始化完成，使用服务商: {self.text_config.get('active_provider')}")
 
     def _load_text_config(self) -> dict:
@@ -95,12 +95,30 @@ class OutlineService:
         logger.info(f"使用文本服务商: {active_provider} (type={provider_config.get('type')})")
         return get_text_chat_client(provider_config)
 
-    def _load_prompt_template(self) -> str:
+    def _load_prompt_template(self, platform: str = 'xiaohongshu') -> str:
+        """
+        加载提示词模板
+
+        参数:
+            platform: 平台类型 ('xiaohongshu' 或 'instagram')
+
+        返回:
+            提示词模板内容
+        """
+        # 根据平台选择对应的 prompt 文件
+        if platform == 'instagram':
+            prompt_filename = "outline_prompt_instagram.txt"
+        else:
+            prompt_filename = "outline_prompt.txt"
+
         prompt_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "prompts",
-            "outline_prompt.txt"
+            prompt_filename
         )
+
+        logger.debug(f"加载 {platform} 平台的 prompt: {prompt_path}")
+
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -141,11 +159,15 @@ class OutlineService:
     def generate_outline(
         self,
         topic: str,
-        images: Optional[List[bytes]] = None
+        images: Optional[List[bytes]] = None,
+        platform: str = 'xiaohongshu'
     ) -> Dict[str, Any]:
         try:
-            logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}")
-            prompt = self.prompt_template.format(topic=topic)
+            logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, platform={platform}")
+
+            # 根据平台动态加载对应的 prompt 模板
+            prompt_template = self._load_prompt_template(platform)
+            prompt = prompt_template.format(topic=topic)
 
             if images and len(images) > 0:
                 prompt += f"\n\n注意：用户提供了 {len(images)} 张参考图片，请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"

@@ -30,15 +30,19 @@ export interface FinishEvent {
   images: string[]
 }
 
-// 生成大纲（支持图片上传）
+// 生成大纲（支持图片上传和平台选择）
 export async function generateOutline(
   topic: string,
-  images?: File[]
+  images?: File[],
+  platform?: 'xiaohongshu' | 'instagram'
 ): Promise<OutlineResponse & { has_images?: boolean }> {
   // 如果有图片，使用 FormData
   if (images && images.length > 0) {
     const formData = new FormData()
     formData.append('topic', topic)
+    if (platform) {
+      formData.append('platform', platform)
+    }
     images.forEach((file) => {
       formData.append('images', file)
     })
@@ -57,7 +61,8 @@ export async function generateOutline(
 
   // 无图片，使用 JSON
   const response = await axios.post<OutlineResponse>(`${API_BASE_URL}/outline`, {
-    topic
+    topic,
+    platform: platform || 'xiaohongshu'
   })
   return response.data
 }
@@ -785,14 +790,16 @@ export interface ContentResponse {
   error?: string
 }
 
-// 生成标题、文案、标签
+// 生成标题、文案、标签（支持平台选择）
 export async function generateContent(
   topic: string,
-  outline: string
+  outline: string,
+  platform?: 'xiaohongshu' | 'instagram'
 ): Promise<ContentResponse> {
   const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content`, {
     topic,
-    outline
+    outline,
+    platform: platform || 'xiaohongshu'
   })
   return response.data
 }
