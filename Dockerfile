@@ -58,6 +58,7 @@ RUN mkdir -p data/output data/history
 ENV FLASK_DEBUG=False
 ENV FLASK_HOST=0.0.0.0
 ENV FLASK_PORT=12398
+ENV PYTHONPATH=/app
 
 # 暴露端口
 EXPOSE 12398
