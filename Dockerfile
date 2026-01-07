@@ -63,9 +63,7 @@ ENV PYTHONPATH=/app
 # 暴露端口
 EXPOSE 12398
 
-# 健康检查 - 使用 PORT 环境变量（Railway 提供动态端口）
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import os; import urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"12398\")}/api/health')" || exit 1
+# 注意：不使用 Docker HEALTHCHECK，让 Railway 使用自己的健康检查机制
 
 # 启动命令 - 直接使用 venv 中的 gunicorn，避免 uv run 的包同步延迟
 CMD ["sh", "-c", ".venv/bin/gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - 'backend.app:app'"]
