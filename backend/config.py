@@ -18,7 +18,9 @@ class Config:
     ]
 
     # 数据目录配置（统一存储在 data 目录下，便于 Railway 单卷挂载）
-    DATA_DIR = os.getenv('DATA_DIR', 'data')  # 可通过环境变量自定义
+    # 使用绝对路径，基于项目根目录
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.getenv('DATA_DIR', os.path.join(_project_root, 'data'))
     OUTPUT_DIR = os.path.join(DATA_DIR, 'output')  # 生成的图片
     HISTORY_DIR = os.path.join(DATA_DIR, 'history')  # 历史记录
 
