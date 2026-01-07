@@ -62,10 +62,9 @@ ENV FLASK_PORT=12398
 # 暴露端口
 EXPOSE 12398
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:12398/api/health')" || exit 1
+# 健康检查 - 使用 PORT 环境变量（Railway 提供动态端口）
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import os; import urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"12398\")}/api/health')" || exit 1
 
-# 启动命令 - 使用 gunicorn 作为生产级 WSGI 服务器
-# 使用 shell 形式来支持环境变量替换
-CMD ["sh", "-c", "uv run gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - 'backend.app:app'"]
+# 启动命令 - 直接使用 venv 中的 gunicorn，避免 uv run 的包同步延迟
+CMD ["sh", "-c", ".venv/bin/gunicorn --bind 0.0.0.0:${PORT:-12398} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - 'backend.app:app'"]
