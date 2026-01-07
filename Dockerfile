@@ -51,8 +51,8 @@ COPY docker/image_providers.yaml ./
 # 从构建阶段复制前端产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# 创建数据目录
-RUN mkdir -p output history
+# 创建数据目录（统一存储在 data 目录下，便于 Railway 单卷挂载）
+RUN mkdir -p data/output data/history
 
 # 设置环境变量
 ENV FLASK_DEBUG=False

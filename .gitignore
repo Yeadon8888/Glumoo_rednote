@@ -41,9 +41,8 @@ Thumbs.db
 /text_providers.yaml
 /image_providers.yaml
 
-# 数据目录
-/output/
-/history/
+# 数据目录（包含历史记录和生成的图片）
+/data/
 
 # Node
 node_modules/

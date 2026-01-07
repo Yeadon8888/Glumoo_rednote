@@ -16,7 +16,11 @@ class Config:
         'https://redink.yourdomain.com',  # 替换为你的实际域名
         'https://*.yourdomain.com',  # 支持所有子域名（可选）
     ]
-    OUTPUT_DIR = 'output'
+
+    # 数据目录配置（统一存储在 data 目录下，便于 Railway 单卷挂载）
+    DATA_DIR = os.getenv('DATA_DIR', 'data')  # 可通过环境变量自定义
+    OUTPUT_DIR = os.path.join(DATA_DIR, 'output')  # 生成的图片
+    HISTORY_DIR = os.path.join(DATA_DIR, 'history')  # 历史记录
 
     _image_providers_config = None
     _text_providers_config = None

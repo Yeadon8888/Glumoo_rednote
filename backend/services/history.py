@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from enum import Enum
+from backend.config import Config
 
 
 class RecordStatus:
@@ -30,11 +31,8 @@ class HistoryService:
 
         创建历史记录存储目录和索引文件
         """
-        # 历史记录存储目录（项目根目录/history）
-        self.history_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "history"
-        )
+        # 历史记录存储目录（使用配置中的路径）
+        self.history_dir = Config.HISTORY_DIR
         os.makedirs(self.history_dir, exist_ok=True)
 
         # 索引文件路径
