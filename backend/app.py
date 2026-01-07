@@ -161,8 +161,11 @@ def _validate_config_on_startup(logger):
     logger.info("✅ 配置检查完成")
 
 
+# 创建应用实例（供 gunicorn 等 WSGI 服务器使用）
+app = create_app()
+
 if __name__ == '__main__':
-    app = create_app()
+    # 开发模式：直接运行 Flask 开发服务器
     app.run(
         host=Config.HOST,
         port=Config.PORT,
