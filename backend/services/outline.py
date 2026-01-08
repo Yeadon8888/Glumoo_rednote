@@ -167,11 +167,15 @@ class OutlineService:
 
             # 根据平台动态加载对应的 prompt 模板
             prompt_template = self._load_prompt_template(platform)
-            prompt = prompt_template.format(topic=topic)
 
+            # 构建用户图片上下文
             if images and len(images) > 0:
-                prompt += f"\n\n注意：用户提供了 {len(images)} 张参考图片，请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"
+                user_images_context = f"用户提供了 {len(images)} 张参考图片。请在生成大纲时考虑这些图片的内容和风格。这些图片可能是产品图、个人照片或场景图，请根据图片内容来优化大纲，使生成的内容与图片相关联。"
                 logger.debug(f"添加了 {len(images)} 张参考图片到提示词")
+            else:
+                user_images_context = "用户没有提供参考图片。"
+
+            prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
 
             # 从配置中获取模型参数
             active_provider = self.text_config.get('active_provider', 'google_gemini')
