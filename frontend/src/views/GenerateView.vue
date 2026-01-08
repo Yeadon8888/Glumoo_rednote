@@ -41,7 +41,12 @@
         <div v-for="image in store.images" :key="image.index" class="image-card">
           <!-- 图片展示区域 -->
           <div v-if="image.url && image.status === 'done'" class="image-preview">
-            <img :src="image.url" :alt="`第 ${image.index + 1} 页`" />
+            <img
+              :src="image.url"
+              :alt="`第 ${image.index + 1} 页`"
+              @error="handleImageError($event, image)"
+              loading="lazy"
+            />
             <!-- 重新生成按钮（悬停显示） -->
             <div class="image-overlay">
               <button
@@ -126,6 +131,23 @@ const getStatusText = (status: string) => {
     retrying: '重试中'
   }
   return texts[status] || '等待中'
+}
+
+// 图片加载失败时自动重试（延迟500ms后重新加载）
+function handleImageError(event: Event, image: { index: number; url: string; status: string }) {
+  const imgElement = event.target as HTMLImageElement
+  const currentSrc = imgElement.src
+
+  // 添加时间戳强制刷新，最多重试3次
+  const retryCount = parseInt(imgElement.dataset.retryCount || '0')
+  if (retryCount < 3) {
+    setTimeout(() => {
+      imgElement.dataset.retryCount = String(retryCount + 1)
+      // 添加时间戳参数强制刷新
+      const separator = currentSrc.includes('?') ? '&' : '?'
+      imgElement.src = currentSrc.split('&_t=')[0].split('?_t=')[0] + separator + '_t=' + Date.now()
+    }, 500)
+  }
 }
 
 // 重试单张图片（异步并发执行，不阻塞）
@@ -321,7 +343,9 @@ onMounted(async () => {
     // userTopic - 用户原始输入
     store.topic,
     // layoutMimicMode - 一键二创模式
-    store.layoutMimicMode
+    store.layoutMimicMode,
+    // platform - 平台类型
+    store.platform
   )
 })
 </script>

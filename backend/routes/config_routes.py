@@ -335,6 +335,7 @@ def _test_google_gemini(config: dict, test_prompt: str) -> dict:
     """测试 Google Gemini 文本生成服务"""
     from google import genai
 
+    # 使用 API Key 方式连接（不使用 Vertex AI）
     if config.get('base_url'):
         client = genai.Client(
             api_key=config['api_key'],
@@ -345,9 +346,10 @@ def _test_google_gemini(config: dict, test_prompt: str) -> dict:
             vertexai=False
         )
     else:
+        # 默认使用 Google AI Studio API（不是 Vertex AI）
         client = genai.Client(
             api_key=config['api_key'],
-            vertexai=True
+            vertexai=False
         )
 
     model = config.get('model') or 'gemini-2.0-flash-exp'

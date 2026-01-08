@@ -210,6 +210,15 @@ export const useGeneratorStore = defineStore('generator', {
       this.outline.pages = pages
       this.stage = 'outline'
       this.outlineStatus = 'done'  // 设置大纲为已完成状态
+
+      // 清除旧的内容数据（标题、文案、标签）
+      // 避免新任务显示旧任务的文案内容
+      this.content = {
+        titles: [],
+        copywriting: '',
+        tags: [],
+        status: 'idle'
+      }
     },
 
     /**

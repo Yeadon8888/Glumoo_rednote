@@ -205,6 +205,11 @@ export interface HistoryDetail {
     task_id: string | null
     generated: string[]
   }
+  content?: {
+    titles: string[]
+    copywriting: string
+    tags: string[]
+  } | null
   status: string
   thumbnail: string | null
 }
@@ -224,6 +229,7 @@ export interface CreateHistoryParams {
 export interface UpdateHistoryParams {
   outline?: { raw: string; pages: Page[] }
   images?: { task_id: string | null; generated: string[] }
+  content?: { titles: string[]; copywriting: string; tags: string[] }
   status?: string
   thumbnail?: string
 }
@@ -627,7 +633,8 @@ export async function generateImagesPost(
   onStreamError: (error: Error) => void,
   userImages?: File[],
   userTopic?: string,
-  layoutMimicMode?: boolean
+  layoutMimicMode?: boolean,
+  platform?: 'xiaohongshu' | 'instagram'
 ) {
   try {
     // 将用户图片转换为 base64
@@ -656,7 +663,8 @@ export async function generateImagesPost(
         full_outline: fullOutline,
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
         user_topic: userTopic || '',
-        layout_mimic_mode: layoutMimicMode || false
+        layout_mimic_mode: layoutMimicMode || false,
+        platform: platform || 'xiaohongshu'
       })
     })
 

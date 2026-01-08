@@ -123,6 +123,7 @@ class HistoryService:
                 "task_id": task_id,
                 "generated": []  # 初始无生成图片
             },
+            "content": None,  # 文案内容（标题、文案、标签）
             "status": RecordStatus.DRAFT,  # 初始状态：草稿
             "thumbnail": None  # 初始无缩略图
         }
@@ -197,6 +198,7 @@ class HistoryService:
         record_id: str,
         outline: Optional[Dict] = None,
         images: Optional[Dict] = None,
+        content: Optional[Dict] = None,
         status: Optional[str] = None,
         thumbnail: Optional[str] = None
     ) -> bool:
@@ -210,6 +212,7 @@ class HistoryService:
             record_id: 记录 ID
             outline: 大纲内容（可选，用于修改大纲）
             images: 图片信息（可选，包含 task_id 和 generated 列表）
+            content: 文案内容（可选，包含 titles, copywriting, tags）
             status: 状态（可选）
             thumbnail: 缩略图文件名（可选）
 
@@ -240,6 +243,10 @@ class HistoryService:
         # 更新图片信息
         if images is not None:
             record["images"] = images
+
+        # 更新文案内容
+        if content is not None:
+            record["content"] = content
 
         # 更新状态（状态流转）
         if status is not None:

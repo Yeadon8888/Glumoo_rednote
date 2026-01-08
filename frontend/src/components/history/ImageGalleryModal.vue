@@ -37,6 +37,42 @@
               </svg>
               查看大纲
             </button>
+            <button
+              v-if="record.content"
+              class="view-outline-btn"
+              @click="showContent = !showContent"
+              title="查看文案内容"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              {{ showContent ? '隐藏文案' : '查看文案' }}
+            </button>
+          </div>
+
+          <!-- 文案内容展示区域 -->
+          <div v-if="showContent && record.content" class="content-display">
+            <div class="content-section">
+              <h4>标题选项</h4>
+              <ul class="title-list">
+                <li v-for="(title, idx) in record.content.titles" :key="idx">
+                  {{ title }}
+                </li>
+              </ul>
+            </div>
+            <div class="content-section">
+              <h4>文案正文</h4>
+              <p class="copywriting-text">{{ record.content.copywriting }}</p>
+            </div>
+            <div class="content-section">
+              <h4>标签</h4>
+              <div class="tags-list">
+                <span v-for="(tag, idx) in record.content.tags" :key="idx" class="tag-item">
+                  {{ tag.startsWith('#') ? tag : '#' + tag }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -128,6 +164,11 @@ interface ViewingRecord {
     task_id: string
     generated: string[]
   }
+  content?: {
+    titles: string[]
+    copywriting: string
+    tags: string[]
+  } | null
 }
 
 // 定义 Props
@@ -148,6 +189,8 @@ defineEmits<{
 
 // 标题展开状态
 const titleExpanded = ref(false)
+// 文案展示状态
+const showContent = ref(false)
 
 // 格式化日期
 const formattedDate = computed(() => {
@@ -267,6 +310,69 @@ const formattedDate = computed(() => {
   background: var(--primary, #ff2442);
   color: white;
   border-color: var(--primary, #ff2442);
+}
+
+/* 文案内容展示区域 */
+.content-display {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.content-section {
+  margin-bottom: 16px;
+}
+
+.content-section:last-child {
+  margin-bottom: 0;
+}
+
+.content-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.title-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: decimal;
+}
+
+.title-list li {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.copywriting-text {
+  margin: 0;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--primary, #ff2442);
 }
 
 /* 头部操作区 */

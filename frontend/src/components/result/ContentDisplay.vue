@@ -136,7 +136,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useGeneratorStore } from '../../stores/generator'
-import { generateContent } from '../../api'
+import { generateContent, updateHistory } from '../../api'
 
 const store = useGeneratorStore()
 
@@ -154,6 +154,27 @@ const formattedCopywriting = computed(() => {
   if (!content.value.copywriting) return []
   return content.value.copywriting.split('\n').filter(p => p.trim())
 })
+
+// 保存内容到历史记录
+async function saveContentToHistory(titles: string[], copywriting: string, tags: string[]) {
+  if (!store.recordId) {
+    console.warn('没有 recordId，无法保存内容到历史记录')
+    return
+  }
+
+  try {
+    const result = await updateHistory(store.recordId, {
+      content: { titles, copywriting, tags }
+    })
+    if (result.success) {
+      console.log('内容已保存到历史记录')
+    } else {
+      console.error('保存内容到历史记录失败:', result.error)
+    }
+  } catch (error) {
+    console.error('保存内容到历史记录出错:', error)
+  }
+}
 
 // 生成内容
 async function handleGenerate() {
@@ -174,6 +195,8 @@ async function handleGenerate() {
 
     if (result.success && result.titles && result.copywriting && result.tags) {
       store.setContent(result.titles, result.copywriting, result.tags)
+      // 保存到历史记录
+      await saveContentToHistory(result.titles, result.copywriting, result.tags)
     } else {
       store.setContentError(result.error || '生成失败')
     }

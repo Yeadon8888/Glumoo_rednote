@@ -122,7 +122,8 @@ class ImageService:
         full_outline: str = "",
         user_images: Optional[List[bytes]] = None,
         user_topic: str = "",
-        layout_mimic_mode: bool = False
+        layout_mimic_mode: bool = False,
+        platform: str = "xiaohongshu"
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """
         生成单张图片（带自动重试）
@@ -135,6 +136,8 @@ class ImageService:
             full_outline: 完整的大纲文本
             user_images: 用户上传的参考图片列表
             user_topic: 用户原始输入
+            layout_mimic_mode: 一键二创模式
+            platform: 平台类型（xiaohongshu 或 instagram）
 
         Returns:
             (index, success, filename, error_message)
@@ -164,8 +167,14 @@ class ImageService:
                 )
 
             # 调用生成器生成图片
+            # 根据平台选择宽高比：小红书 3:4，Instagram 4:5
+            if platform == 'instagram':
+                aspect_ratio = '4:5'  # Instagram: 1080x1350
+            else:
+                aspect_ratio = self.provider_config.get('default_aspect_ratio', '3:4')  # 小红书: 1080x1440
+
             if self.provider_config.get('type') == 'google_genai':
-                logger.debug(f"  使用 Google GenAI 生成器")
+                logger.debug(f"  使用 Google GenAI 生成器, aspect_ratio={aspect_ratio}")
 
                 # 组合参考图片：用户上传的图片 + 封面图
                 reference_images_list = []
@@ -176,14 +185,14 @@ class ImageService:
 
                 image_data = self.generator.generate_image(
                     prompt=prompt,
-                    aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                    aspect_ratio=aspect_ratio,
                     temperature=self.provider_config.get('temperature', 1.0),
                     model=self.provider_config.get('model', 'gemini-3-pro-image-preview'),
                     reference_images=reference_images_list if reference_images_list else None,
                     layout_mimic_mode=layout_mimic_mode
                 )
             elif self.provider_config.get('type') == 'image_api':
-                logger.debug(f"  使用 Image API 生成器")
+                logger.debug(f"  使用 Image API 生成器, aspect_ratio={aspect_ratio}")
                 # Image API 支持多张参考图片
                 # 组合参考图片：用户上传的图片 + 封面图
                 reference_images = []
@@ -194,7 +203,7 @@ class ImageService:
 
                 image_data = self.generator.generate_image(
                     prompt=prompt,
-                    aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                    aspect_ratio=aspect_ratio,
                     temperature=self.provider_config.get('temperature', 1.0),
                     model=self.provider_config.get('model', 'nano-banana-2'),
                     reference_images=reference_images if reference_images else None,
@@ -227,7 +236,8 @@ class ImageService:
         full_outline: str = "",
         user_images: Optional[List[bytes]] = None,
         user_topic: str = "",
-        layout_mimic_mode: bool = False
+        layout_mimic_mode: bool = False,
+        platform: str = "xiaohongshu"
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -240,6 +250,7 @@ class ImageService:
             user_images: 用户上传的参考图片列表（可选）
             user_topic: 用户原始输入（用于保持意图一致）
             layout_mimic_mode: 一键二创模式（严格模仿布局）
+            platform: 平台类型（xiaohongshu 或 instagram）
 
         Yields:
             进度事件字典
@@ -273,7 +284,8 @@ class ImageService:
             "full_outline": full_outline,
             "user_images": compressed_user_images,
             "user_topic": user_topic,
-            "layout_mimic_mode": layout_mimic_mode
+            "layout_mimic_mode": layout_mimic_mode,
+            "platform": platform
         }
 
         # ==================== 第一阶段：生成封面 ====================
@@ -309,7 +321,7 @@ class ImageService:
             index, success, filename, error = self._generate_single_image(
                 cover_page, task_id, reference_image=None, full_outline=full_outline,
                 user_images=compressed_user_images, user_topic=user_topic,
-                layout_mimic_mode=layout_mimic_mode
+                layout_mimic_mode=layout_mimic_mode, platform=platform
             )
 
             if success:
@@ -380,7 +392,8 @@ class ImageService:
                             full_outline,  # 传入完整大纲
                             compressed_user_images,  # 用户上传的参考图片（已压缩）
                             user_topic,  # 用户原始输入
-                            layout_mimic_mode  # 一键二创模式
+                            layout_mimic_mode,  # 一键二创模式
+                            platform  # 平台类型
                         ): page
                         for page in other_pages
                     }
@@ -482,7 +495,8 @@ class ImageService:
                         full_outline,
                         compressed_user_images,
                         user_topic,
-                        layout_mimic_mode
+                        layout_mimic_mode,
+                        platform
                     )
 
                     if success:
@@ -583,7 +597,8 @@ class ImageService:
             full_outline,
             user_images,
             user_topic,
-            task_state.get("layout_mimic_mode", False)  # 从任务状态获取
+            task_state.get("layout_mimic_mode", False),  # 从任务状态获取
+            task_state.get("platform", "xiaohongshu")  # 从任务状态获取平台
         )
 
         if success:
@@ -644,6 +659,7 @@ class ImageService:
         user_images = task_state.get("user_images")
         user_topic = task_state.get("user_topic", "")
         layout_mimic_mode = task_state.get("layout_mimic_mode", False)
+        platform = task_state.get("platform", "xiaohongshu")
 
         with ThreadPoolExecutor(max_workers=self.MAX_CONCURRENT) as executor:
             future_to_page = {
@@ -656,7 +672,8 @@ class ImageService:
                     full_outline,  # 传入完整大纲
                     user_images,  # 用户上传的参考图片
                     user_topic,  # 用户原始输入
-                    layout_mimic_mode  # 一键二创模式
+                    layout_mimic_mode,  # 一键二创模式
+                    platform  # 平台类型
                 ): page
                 for page in pages
             }

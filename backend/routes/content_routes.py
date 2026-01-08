@@ -47,6 +47,11 @@ def create_content_blueprint():
                 'platform': platform
             })
 
+            # 详细日志：打印主题和大纲前200字
+            logger.info(f"📝 内容生成请求详情:")
+            logger.info(f"   完整主题: {topic}")
+            logger.info(f"   大纲前200字: {outline[:200]}...")
+
             # 验证必填参数
             if not topic:
                 logger.warning("内容生成请求缺少 topic 参数")

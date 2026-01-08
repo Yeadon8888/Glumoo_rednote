@@ -197,6 +197,7 @@ def create_history_blueprint():
         请求体（均为可选）：
         - outline: 大纲内容（支持修改大纲）
         - images: 图片信息 { task_id, generated: [] }
+        - content: 文案内容 { titles: [], copywriting: "", tags: [] }
         - status: 状态（draft/generating/partial/completed/error）
         - thumbnail: 缩略图文件名
 
@@ -225,11 +226,21 @@ def create_history_blueprint():
             "status": "partial",
             "thumbnail": "0.png"
         }
+
+        示例请求（保存文案内容）：
+        {
+            "content": {
+                "titles": ["标题1", "标题2"],
+                "copywriting": "文案正文...",
+                "tags": ["标签1", "标签2"]
+            }
+        }
         """
         try:
             data = request.get_json()
             outline = data.get('outline')
             images = data.get('images')
+            content = data.get('content')
             status = data.get('status')
             thumbnail = data.get('thumbnail')
 
@@ -238,6 +249,7 @@ def create_history_blueprint():
                 record_id,
                 outline=outline,
                 images=images,
+                content=content,
                 status=status,
                 thumbnail=thumbnail
             )

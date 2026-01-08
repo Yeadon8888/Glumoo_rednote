@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Glumoo 是一个专注于小红书宠物内容创作的 AI 图文生成Agent。它使用 AI 模型生成大纲、内容文本（标题、正文、标签）和风格化图片。
+Glumoo (红墨/RedInk) 是一个 AI 图文生成 Agent，专注于小红书和 Instagram 的宠物内容创作。它使用 AI 模型生成大纲、内容文本（标题、正文、标签）和风格化图片。
 
 **Tech Stack:**
 - **Backend**: Python 3.11+ with Flask, managed by `uv` package manager
 - **Frontend**: Vue 3 + TypeScript + Vite + Pinia
 - **AI Providers**: Google Gemini for text generation, configurable image generation (Google GenAI, OpenAI-compatible APIs)
+- **Platforms Supported**: Xiaohongshu (小红书), Instagram
 
 ## Development Commands
 
@@ -106,10 +107,12 @@ backend/
 │   ├── openai_compatible.py  # OpenAI-compatible API generator
 │   └── image_api.py          # Generic image API generator
 ├── prompts/            # AI prompt templates (text files)
-│   ├── outline_prompt.txt       # Outline generation template
+│   ├── outline_prompt.txt       # Outline generation template (Xiaohongshu)
+│   ├── outline_prompt_instagram.txt  # Outline generation template (Instagram)
 │   ├── image_prompt.txt         # Full image generation template
 │   ├── image_prompt_short.txt   # Short image generation template
-│   └── content_prompt.txt       # Content (title/text/tags) generation template
+│   ├── content_prompt.txt       # Content (title/text/tags) template (Xiaohongshu)
+│   └── content_prompt_instagram.txt  # Content template (Instagram)
 └── utils/              # Shared utilities
 ```
 
@@ -167,6 +170,7 @@ Two YAML config files (auto-loaded or web UI editable):
 - `backend/config.py` loads YAML on startup with caching (`_image_providers_config`, `_text_providers_config`)
 - `Config.reload_config()` clears cache when config is updated via web UI
 - Config API at `/api/config` supports GET/PUT for runtime updates
+- **Environment Variables**: API keys can be provided via `GOOGLE_API_KEY` or `GEMINI_API_KEY` environment variables (priority: `GOOGLE_API_KEY` > `GEMINI_API_KEY` > YAML config)
 
 ### Image Generation Flow
 
@@ -237,12 +241,14 @@ Custom logging format in `app.py:setup_logging()`:
 ### Modifying AI Prompts
 
 Prompts are stored as plain text files in `backend/prompts/`:
-- `outline_prompt.txt` - Controls outline structure and format
+- `outline_prompt.txt` - Controls outline structure and format (Xiaohongshu)
+- `outline_prompt_instagram.txt` - Outline template for Instagram
 - `image_prompt.txt` - Main image generation prompt
 - `image_prompt_short.txt` - Simplified image generation prompt
-- `content_prompt.txt` - Template for title/text/tags generation
+- `content_prompt.txt` - Template for title/text/tags generation (Xiaohongshu)
+- `content_prompt_instagram.txt` - Content template for Instagram
 
-Edit these files directly to modify AI generation behavior. No code changes required.
+Edit these files directly to modify AI generation behavior. No code changes required. Platform is selected via `platform` parameter in API requests.
 
 ## API Endpoints Reference
 
