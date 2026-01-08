@@ -1,0 +1,84 @@
+{
+  "records": [
+    {
+      "id": "0691dedd-93e4-490b-b544-3706f4cff22f",
+      "title": "金毛",
+      "created_at": "2026-01-06T04:24:43.454548",
+      "updated_at": "2026-01-06T04:25:05.250192",
+      "status": "generating",
+      "thumbnail": null,
+      "page_count": 1,
+      "task_id": null
+    },
+    {
+      "id": "f2b29048-38eb-4438-97c5-960156ab5052",
+      "title": "金毛确认爱",
+      "created_at": "2026-01-06T03:17:18.595853",
+      "updated_at": "2026-01-06T03:36:46.115648",
+      "status": "generating",
+      "thumbnail": null,
+      "page_count": 9,
+      "task_id": null
+    },
+    {
+      "id": "5053330a-ee63-4604-a610-9346e437ed71",
+      "title": "金毛确认爱",
+      "created_at": "2026-01-06T03:10:20.499072",
+      "updated_at": "2026-01-06T03:14:22.686599",
+      "status": "generating",
+      "thumbnail": null,
+      "page_count": 10,
+      "task_id": null
+    },
+    {
+      "id": "ffe1cb76-fdba-404f-ac83-b9bacf444a0e",
+      "title": "金毛确认爱",
+      "created_at": "2026-01-06T03:02:35.608075",
+      "updated_at": "2026-01-06T03:09:23.449838",
+      "status": "generating",
+      "thumbnail": null,
+      "page_count": 9,
+      "task_id": null
+    },
+    {
+      "id": "66c3af8c-9a8d-40d4-9b93-d9a2cda63f0e",
+      "title": "参考图片的类型生成关于：8大哄睡误区‼️新手爸妈必看避坑💥为标题的图文帖子",
+      "created_at": "2026-01-04T15:37:40.856364",
+      "updated_at": "2026-01-07T08:52:47.123656",
+      "status": "completed",
+      "thumbnail": "0.png",
+      "page_count": 6,
+      "task_id": "task_a4b03f99"
+    },
+    {
+      "id": "bdaa54c9-f7b7-4cec-926d-a51846c34aa6",
+      "title": "马卡龙色系，严格按照参考图片的排版，做4个小红书图文的卡片，用来介绍泰迪犬",
+      "created_at": "2026-01-01T09:35:04.036897",
+      "updated_at": "2026-01-07T08:52:47.126536",
+      "status": "completed",
+      "thumbnail": "0.png",
+      "page_count": 4,
+      "task_id": "task_9a2106a7"
+    },
+    {
+      "id": "38a64bc3-108a-4f6f-b06a-d337fbad1cf7",
+      "title": "每日认识一种宠物，柴犬，然后右下角加上 G lu mo o",
+      "created_at": "2026-01-01T08:44:48.901726",
+      "updated_at": "2026-01-07T08:52:47.134726",
+      "status": "completed",
+      "thumbnail": "0.png",
+      "page_count": 7,
+      "task_id": "task_90350616"
+    },
+    {
+      "id": "1b87cd85-b606-435f-9fcd-bb61f35f9323",
+      "title": "Glumoo 猫粮狗粮高蛋白",
+      "created_at": "2025-12-30T15:18:50.792081",
+      "updated_at": "2026-01-07T08:52:47.116002",
+      "status": "completed",
+      "thumbnail": "0.png",
+      "page_count": 9,
+      "task_id": "task_a7fb57e8"
+    }
+  ]
+}
