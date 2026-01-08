@@ -145,8 +145,10 @@ const uploadedImages = ref<UploadedImage[]>([])
 // 一键二创模式
 const layoutMimicMode = ref(false)
 
-// 平台选择（默认小红书）
-const selectedPlatform = ref('xiaohongshu')
+// 平台选择（从 store 同步初始值，确保与实际发送的值一致）
+import { useGeneratorStore } from '../../stores/generator'
+const store = useGeneratorStore()
+const selectedPlatform = ref(store.platform || 'xiaohongshu')
 
 /**
  * 处理输入变化

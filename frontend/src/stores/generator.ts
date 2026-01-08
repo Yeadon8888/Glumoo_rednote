@@ -428,6 +428,9 @@ export const useGeneratorStore = defineStore('generator', {
       // 清空用户输入的主题
       this.topic = ''
 
+      // 重置平台为默认的小红书
+      this.platform = 'xiaohongshu'
+
       // 清空大纲数据
       this.outline = {
         raw: '',      // 原始大纲文本
