@@ -83,20 +83,13 @@ class ContentService:
 
         provider_config = providers.get(active_provider, {})
 
-        # 优先从环境变量读取 API Key（支持 Railway 等云平台部署）
-        env_api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
-        if env_api_key:
-            logger.info(f"从环境变量读取 API Key: GOOGLE_API_KEY 或 GEMINI_API_KEY")
-            provider_config = provider_config.copy()  # 避免修改原始配置
-            provider_config['api_key'] = env_api_key
-
         if not provider_config.get('api_key'):
             logger.error(f"文本服务商 [{active_provider}] 未配置 API Key")
             raise ValueError(
                 f"文本服务商 {active_provider} 未配置 API Key\n"
                 "解决方案：\n"
                 "1. 在系统设置页面编辑该服务商，填写 API Key\n"
-                "2. 或在 Railway 等平台设置环境变量 GOOGLE_API_KEY"
+                "2. 或手动在 text_providers.yaml 中添加 api_key 字段"
             )
 
         logger.info(f"使用文本服务商: {active_provider} (type={provider_config.get('type')})")

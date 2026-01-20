@@ -128,12 +128,6 @@ class Config:
 
         provider_config = providers[provider_name].copy()
 
-        # 优先从环境变量读取 API Key（支持 Railway 等云平台部署）
-        env_api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
-        if env_api_key:
-            logger.info(f"从环境变量读取 API Key: GOOGLE_API_KEY 或 GEMINI_API_KEY")
-            provider_config['api_key'] = env_api_key
-
         # 验证必要字段
         if not provider_config.get('api_key'):
             logger.error(f"图片服务商 [{provider_name}] 未配置 API Key")
@@ -141,8 +135,7 @@ class Config:
                 f"服务商 {provider_name} 未配置 API Key\n"
                 "解决方案：\n"
                 "1. 在系统设置页面编辑该服务商，填写 API Key\n"
-                "2. 或在 Railway 等平台设置环境变量 GOOGLE_API_KEY\n"
-                "3. 或手动在 image_providers.yaml 中添加 api_key 字段"
+                "2. 或手动在 image_providers.yaml 中添加 api_key 字段"
             )
 
         provider_type = provider_config.get('type', provider_name)
