@@ -1,0 +1,422 @@
+<div align="center">
+
+**[中文](./README.md) | English**
+
+<img src="images/2.png" alt="RedInk - Inspiration at Your Fingertips, Making Creation Effortless" width="600"/>
+
+## RedInk Official Site is Live! Get 50 Free Credits on Sign-up!
+
+## Invitation code required! Get one at https://watcha.cn/square/discuss#post_id=1380
+
+<div align="center">
+<a href="https://redink.top">
+  <img src="images/redink.png" alt="Try RedInk Online" width="500" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"/>
+</a>
+
+#### [Try it Online → Redink.top](https://redink.top)
+
+
+</div>
+
+<img src="images/showcase-grid.png" alt="Various Xiaohongshu covers generated with RedInk" width="700" style="border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"/>
+
+<sub>*Various Xiaohongshu (Little Red Book) covers generated with RedInk - AI-powered, consistent style, accurate text*</sub>
+
+</div>
+
+---
+
+## ✨ Showcase
+
+### Type One Sentence, Get Complete Image & Text Posts
+
+<details open>
+<summary><b>Step 1: Smart Outline Generation</b></summary>
+
+<br>
+
+![Outline Example](./images/example-2.png)
+
+**Features:**
+- ✏️ Edit content for each page
+- 🔄 Reorder pages (not recommended)
+- ✨ Custom description per page (highly recommended)
+
+</details>
+
+<details open>
+<summary><b>🎨 Step 2: Cover Page Generation</b></summary>
+
+<br>
+
+![Cover Example](./images/example-3.png)
+
+**Cover Highlights:**
+- 🎯 Matches your personal style
+- 📝 Accurate text rendering
+- 🌈 Visually consistent and coordinated
+
+</details>
+
+<details open>
+<summary><b>📚 Step 3: Batch Content Page Generation</b></summary>
+
+<br>
+
+![Content Page Example](./images/example-4.png)
+
+**Generation Notes:**
+- ⚡ Concurrent generation for all pages (up to 15 by default)
+- ⚠️ Disable high concurrency in settings if your API doesn't support it
+- 🔧 Regenerate individual pages you're not satisfied with
+
+</details>
+
+---
+
+## 🏗️ Tech Stack
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🔧 Backend
+
+| Technology | Description |
+|------|------|
+| **Language** | Python 3.11+ |
+| **Framework** | Flask |
+| **Package Manager** | uv |
+| **Text AI** | Gemini 3 |
+| **Image AI** | 🍌 Nano Banana Pro |
+
+</td>
+<td width="50%" valign="top">
+
+### 🎨 Frontend
+
+| Technology | Description |
+|------|------|
+| **Framework** | Vue 3 + TypeScript |
+| **Build Tool** | Vite |
+| **State Management** | Pinia |
+| **Styling** | Modern CSS |
+
+</td>
+</tr>
+</table>
+
+---
+
+## 📦 Deployment
+
+### Option 1: Docker (Recommended)
+
+**The simplest way — one command to start:**
+
+```bash
+docker run -d -p 12398:12398 -v ./history:/app/history -v ./output:/app/output histonemax/redink:latest
+```
+
+Visit http://localhost:12398 and configure your API Key in the **Settings** page.
+
+**Using docker-compose (optional):**
+
+Download [docker-compose.yml](https://github.com/HisMax/RedInk/blob/main/docker-compose.yml), then:
+
+```bash
+docker-compose up -d
+```
+
+**Docker Notes:**
+- The container does not include any API Keys — configure them in the web UI
+- Use `-v ./history:/app/history` to persist history
+- Use `-v ./output:/app/output` to persist generated images
+- Optional: mount custom config `-v ./text_providers.yaml:/app/text_providers.yaml`
+
+---
+
+### Option 2: Local Development
+
+**Prerequisites:**
+- Python 3.11+
+- Node.js 18+
+- pnpm
+- uv
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/HisMax/RedInk.git
+cd RedInk
+```
+
+### 2. Configure API Services
+
+Copy the config templates:
+```bash
+cp text_providers.yaml.example text_providers.yaml
+cp image_providers.yaml.example image_providers.yaml
+```
+
+Edit the config files with your API Key and service settings, or configure them later via the **Settings** page in the web UI.
+
+### 3. Install Backend Dependencies
+```bash
+uv sync
+```
+
+### 4. Install Frontend Dependencies
+```bash
+cd frontend
+pnpm install
+```
+
+### 5. Start the Services
+
+#### One-Click Start (Recommended)
+
+Run the start script to automatically install dependencies and launch both frontend and backend:
+
+- **macOS**: `start.sh` or double-click `scripts/start-macos.command`
+- **Linux**: `./start.sh`
+- **Windows**: Double-click `start.bat`
+
+The browser will automatically open at http://localhost:5173
+
+#### Manual Start
+
+**Start Backend:**
+```bash
+uv run python -m backend.app
+```
+Visit: http://localhost:12398
+
+**Start Frontend:**
+```bash
+cd frontend
+pnpm dev
+```
+Visit: http://localhost:5173
+
+---
+
+## 🔧 Configuration
+
+### Configuration Methods
+
+The project supports two configuration methods:
+
+1. **Web UI (Recommended)**: Visual configuration via the Settings page after starting the service
+2. **YAML Files**: Edit config files directly
+
+### Text Generation Config
+
+Config file: `text_providers.yaml`
+
+```yaml
+# Active provider
+active_provider: openai
+
+providers:
+  # OpenAI or compatible API
+  openai:
+    type: openai_compatible
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api.openai.com/v1
+    model: gpt-4o
+
+  # Google Gemini (native API)
+  gemini:
+    type: google_gemini
+    api_key: AIzaxxxxxxxxxxxxxxxxxxxxxxxxx
+    model: gemini-2.0-flash
+```
+
+### Image Generation Config
+
+Config file: `image_providers.yaml`
+
+```yaml
+# Active provider
+active_provider: gemini
+
+providers:
+  # Google Gemini image generation
+  gemini:
+    type: google_genai
+    api_key: AIzaxxxxxxxxxxxxxxxxxxxxxxxxx
+    model: gemini-3-pro-image-preview
+    high_concurrency: false
+
+  # OpenAI compatible API
+  openai_image:
+    type: image_api
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://your-api-endpoint.com
+    model: dall-e-3
+    high_concurrency: false
+```
+
+### High Concurrency Mode
+
+- **Off (default)**: Images generated one by one — suitable for GCP $300 trial accounts or rate-limited APIs
+- **On**: Images generated in parallel (up to 15 simultaneously) — faster but requires API support for high concurrency
+
+⚠️ **Not recommended for GCP $300 trial accounts** — may trigger rate limits and cause generation failures.
+
+---
+
+## ⚠️ Notes
+
+1. **API Quota Limits**:
+   - Be aware of Gemini and image generation API call quotas
+   - GCP trial accounts should keep high concurrency disabled
+
+2. **Generation Time**:
+   - Image generation takes time — please be patient (don't leave the page)
+
+---
+
+## 🤝 Contributing
+
+Issues and Pull Requests are welcome!
+
+If this project helps you, please give it a Star ⭐
+
+---
+
+## Changelog
+
+### v1.4.1 (2025-12-29)
+- ✨ Added one-click start scripts for macOS/Linux/Windows
+- ✨ Added copywriting generation: auto-generate titles, body text, and tags
+- 🔧 Fixed history saving: immediate save after outline generation, auto-save on edit (300ms debounce)
+- 🔧 Optimized navigation: force-save unsaved changes before clicking "Start Generation"
+- 🔧 Unified startup script port display to 12398
+- 🔧 Cleaned up unused retry decorator code in backend generators
+- 🔧 Fixed frontend CSS variable reference issues
+- 🔧 Optimized checkHistoryExists API performance with dedicated endpoint
+- 🔧 Standardized recordId assignment using setRecordId() method
+
+### v1.4.0 (2025-11-30)
+- 🏗️ Backend refactored: split monolithic routes into modular blueprints (history, images, generation, outline, config)
+- 🏗️ Frontend refactored: extracted reusable components (ImageGalleryModal, OutlineModal, ShowcaseBackground, etc.)
+- ✨ Optimized homepage design, removed redundant content blocks
+- ✨ Background image preloading with fade-in animation for better loading experience
+- ✨ History persistence support (Docker deployment)
+- 🔧 Fixed history preview and outline viewing
+- 🔧 Optimized Modal component visibility control
+- 🧪 Added 65 backend unit tests
+
+### v1.3.0 (2025-11-26)
+- ✨ Added Docker support for one-click deployment
+- ✨ Published official Docker image to Docker Hub: `histonemax/redink`
+- 🔧 Flask auto-detects frontend build artifacts for single-container deployment
+- 🔧 Docker image includes blank config templates to protect API Key security
+- 📝 Updated README with Docker deployment instructions
+
+### v1.2.0 (2025-11-26)
+- ✨ Added copyright info display on all pages
+- ✨ Improved image regeneration with single image redraw support
+- ✨ Regenerated images maintain style consistency with full context (cover, outline, user input)
+- ✨ Fixed image cache issues — regenerated images refresh immediately
+- ✨ Unified text generation client supporting Google Gemini and OpenAI-compatible APIs with auto-switching
+- ✨ Added web UI configuration for visual API provider management
+- ✨ Added high concurrency mode toggle for different API quotas
+- ✨ API Key masking for security
+- ✨ Auto-save configuration with instant effect
+- 🔧 Adjusted default max_output_tokens to 8000 for broader model compatibility
+- 🔧 Optimized frontend routing and page layout for better UX
+- 🔧 Simplified config file structure, removed redundant parameters
+- 🔧 Optimized history image display with thumbnails to save bandwidth
+- 🔧 History regeneration auto-loads cover image from filesystem as reference
+- 🐛 Fixed missing `store.updateImage` method causing regeneration failure
+- 🐛 Fixed image URL concatenation error during history loading
+- 🐛 Fixed raw image parameter handling in download function
+- 🐛 Fixed image loading 500 error
+
+---
+
+## Community & Support
+
+- **GitHub Issues**: [https://github.com/HisMax/RedInk/issues](https://github.com/HisMax/RedInk/issues)
+
+### Contact the Author
+
+- **Email**: histonemax@gmail.com
+- **WeChat**: Histone2024 (please state your purpose)
+- **GitHub**: [@HisMax](https://github.com/HisMax)
+
+### Support the Project
+
+<img src="images/coffee.jpg" alt="Buy me a coffee" width="300"/>
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HisMax/RedInk&type=Date)](https://star-history.com/#HisMax/RedInk&Date)
+
+---
+
+## 📄 License
+
+### Personal Use - CC BY-NC-SA 4.0
+
+This project is licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+**You are free to:**
+- ✅ **Personal Use** — for learning, research, and personal projects
+- ✅ **Share** — copy and redistribute the material in any medium or format
+- ✅ **Adapt** — remix, transform, and build upon the material
+
+**Under the following terms:**
+- 📝 **Attribution** — You must give appropriate credit, provide a link to the license, and indicate if changes were made
+- 🚫 **NonCommercial** — You may not use the material for commercial purposes
+- 🔄 **ShareAlike** — If you remix, transform, or build upon the material, you must distribute your contributions under the same license
+
+### Commercial License
+
+If you wish to use this project for **commercial purposes** (including but not limited to):
+- Providing paid services
+- Integrating into commercial products
+- Operating as a SaaS service
+- Other for-profit uses
+
+**Please contact the author for a commercial license:**
+- 📧 Email: histonemax@gmail.com
+- 💬 WeChat: Histone2024 (please note "Commercial License Inquiry")
+
+The author will provide flexible commercial licensing options based on your specific use case.
+
+---
+
+### Disclaimer
+
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages, or other liability.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Google Gemini](https://ai.google.dev/) — Powerful text generation capabilities
+- Image generation service providers — Stunning image generation
+- [Linux.do](https://linux.do/) — Excellent developer community
+
+---
+
+## 👨‍💻 Author
+
+**Mozi (Histone)** - AI Entrepreneur
+
+- 🏠 Location: Hangzhou, China
+- 🚀 Status: Startup in progress
+- 📧 Email: histonemax@gmail.com
+- 💬 WeChat: Histone2024 (personal WeChat — no tech support)
+- 🐙 GitHub: [@HisMax](https://github.com/HisMax)
+
+*"Let AI do the creative work for us"*
+
+---
+
+**If this project helped you, share it with others!** ⭐
+
+Questions or suggestions? Feel free to open an Issue!

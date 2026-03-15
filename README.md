@@ -1,5 +1,7 @@
 <div align="center">
 
+**中文 | [English](./README_EN.md)**
+
 <img src="images/2.png" alt="红墨 - 灵感一触即发 让创作从未如此简单" width="600"/>
 
 ## 红墨官方站点上线啦，注册即送50体验积分！
