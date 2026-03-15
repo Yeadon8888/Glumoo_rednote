@@ -2,6 +2,11 @@
 
 **中文 | [English](./README.md)**
 
+[![GitHub Stars](https://img.shields.io/github/stars/HisMax/RedInk?style=flat&logo=github)](https://github.com/HisMax/RedInk)
+[![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-blue)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Docker Pulls](https://img.shields.io/docker/pulls/histonemax/redink)](https://hub.docker.com/r/histonemax/redink)
+[![GitHub Release](https://img.shields.io/github/v/release/HisMax/RedInk?include_prereleases)](https://github.com/HisMax/RedInk/releases)
+
 <img src="images/2.png" alt="红墨 - 灵感一触即发 让创作从未如此简单" width="600"/>
 
 ## 红墨官方站点上线啦，注册即送50体验积分！
@@ -287,6 +292,21 @@ providers:
 ---
 
 ## 更新日志
+
+### v1.4.2 (2026-03-15)
+- ✨ 新增英文版 README 并设为默认，支持中英文切换
+- ✨ 新增 AI 生成的英文 banner 和 showcase 展示图片
+- ✨ 致谢部分新增 Claude Opus 4.5
+- ✨ 新增 shields.io 徽章（Stars、License、Docker Pulls、Release）
+- ✨ 新增 GitHub Issue/PR 模板，规范化社区贡献
+- ✨ 新增 CONTRIBUTING.md 贡献指南和 SECURITY.md 安全策略
+- 🐛 修复 `rstrip('/v1')` 错误删除 URL 字符的问题（如 `api.openai.com` → `api.openai.co`），涉及后端 5 处
+- 🐛 修复豆包/火山引擎等 chat 端点的图片 API 测试连接失败问题（使用配置的 endpoint_type 替代硬编码的 `/v1/models`）
+- 🐛 修复 history 服务中裸 `except:` 改为 `except Exception:`
+- 🐛 修复前端 SSE 流读取器在异常时未释放的资源泄漏
+- 🐛 修复 ContentDisplay 组件 5 个 setTimeout 未清理的内存泄漏
+- 🐛 修复图片重试可重复提交的问题（使用 Set 追踪进行中的索引）
+- 🐛 修复 GenerateView 组件卸载后跳转定时器未清理
 
 ### v1.4.1 (2025-12-29)
 - ✨ 新增一键启动脚本，支持 macOS/Linux/Windows

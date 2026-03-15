@@ -2,6 +2,11 @@
 
 **[中文](./README_zh.md) | English**
 
+[![GitHub Stars](https://img.shields.io/github/stars/HisMax/RedInk?style=flat&logo=github)](https://github.com/HisMax/RedInk)
+[![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-blue)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Docker Pulls](https://img.shields.io/docker/pulls/histonemax/redink)](https://hub.docker.com/r/histonemax/redink)
+[![GitHub Release](https://img.shields.io/github/v/release/HisMax/RedInk?include_prereleases)](https://github.com/HisMax/RedInk/releases)
+
 <img src="images/2_en.png" alt="RedInk - Inspiration at Your Fingertips, Making Creation Effortless" width="600"/>
 
 #### [Official Site → Redink.top](https://redink.top)
@@ -274,6 +279,21 @@ If this project helps you, please give it a Star ⭐
 ---
 
 ## Changelog
+
+### v1.4.2 (2026-03-15)
+- ✨ Added English README as default with language toggle (中文/English)
+- ✨ Added AI-generated English banner and showcase grid images
+- ✨ Added Claude Opus 4.5 to acknowledgments
+- ✨ Added shields.io badges (Stars, License, Docker Pulls, Release)
+- ✨ Added GitHub Issue/PR templates for standardized contributions
+- ✨ Added CONTRIBUTING.md and SECURITY.md
+- 🐛 Fixed `rstrip('/v1')` incorrectly stripping URL characters (e.g. `api.openai.com` → `api.openai.co`) — 5 occurrences across backend
+- 🐛 Fixed image API test connection failing for chat-based endpoints (Doubao/Volcengine) by using configured endpoint_type instead of hardcoded `/v1/models`
+- 🐛 Fixed bare `except:` clause replaced with `except Exception:` in history service
+- 🐛 Fixed SSE stream reader not released on error in frontend API layer (resource leak)
+- 🐛 Fixed 5 uncleared `setTimeout` calls in ContentDisplay component (memory leak)
+- 🐛 Fixed duplicate image regeneration requests by tracking in-progress indices
+- 🐛 Fixed GenerateView redirect timer not cleared on component unmount
 
 ### v1.4.1 (2025-12-29)
 - ✨ Added one-click start scripts for macOS/Linux/Windows
