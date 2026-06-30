@@ -33,20 +33,19 @@
         <div class="progress-bar" :style="{ width: progressPercent + '%' }" />
       </div>
 
-      <div v-if="error" class="error-msg">
-        {{ error }}
-      </div>
+      <ErrorCard
+        v-if="error"
+        :error="error"
+        dismissible
+        style="margin-top: 18px;"
+        @dismiss="error = null"
+      />
 
       <div class="grid-cols-4" style="margin-top: 40px;">
         <div v-for="image in store.images" :key="image.index" class="image-card">
           <!-- 图片展示区域 -->
           <div v-if="image.url && image.status === 'done'" class="image-preview">
-            <img
-              :src="image.url"
-              :alt="`第 ${image.index + 1} 页`"
-              @error="handleImageError($event, image)"
-              loading="lazy"
-            />
+            <img :src="image.url" :alt="`第 ${image.index + 1} 页`" />
             <!-- 重新生成按钮（悬停显示） -->
             <div class="image-overlay">
               <button
@@ -73,6 +72,7 @@
           <div v-else-if="image.status === 'error'" class="image-placeholder error-placeholder">
             <div class="error-icon">!</div>
             <div class="status-text">生成失败</div>
+            <div v-if="image.error" class="image-error-text">{{ image.error }}</div>
             <button
               class="retry-btn"
               @click="retrySingleImage(image.index)"
@@ -104,12 +104,26 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
-import { generateImagesPost, regenerateImage as apiRegenerateImage, retryFailedImages as apiRetryFailed, createHistory, updateHistory, getImageUrl } from '../api'
+import {
+  generateImagesPost,
+  regenerateImage as apiRegenerateImage,
+  retryFailedImages as apiRetryFailed,
+  createHistory,
+  getHistory,
+  getImageUrl,
+  type HistoryDetail
+} from '../api'
+import ErrorCard from '../components/common/ErrorCard.vue'
+import {
+  formatErrorMessage,
+  normalizeApiError,
+  type AppError
+} from '../utils/errors'
 
 const router = useRouter()
 const store = useGeneratorStore()
 
-const error = ref('')
+const error = ref<AppError | null>(null)
 const isRetrying = ref(false)
 const redirectTimer = ref<number | null>(null)
 const regeneratingIndices = ref(new Set<number>())
@@ -136,20 +150,9 @@ const getStatusText = (status: string) => {
   return texts[status] || '等待中'
 }
 
-// 图片加载失败时自动重试（延迟500ms后重新加载）
-function handleImageError(event: Event, image: { index: number; url: string; status: string }) {
-  const imgElement = event.target as HTMLImageElement
-  const currentSrc = imgElement.src
-
-  // 添加时间戳强制刷新，最多重试3次
-  const retryCount = parseInt(imgElement.dataset.retryCount || '0')
-  if (retryCount < 3) {
-    setTimeout(() => {
-      imgElement.dataset.retryCount = String(retryCount + 1)
-      // 添加时间戳参数强制刷新
-      const separator = currentSrc.includes('?') ? '&' : '?'
-      imgElement.src = currentSrc.split('&_t=')[0].split('?_t=')[0] + separator + '_t=' + Date.now()
-    }, 500)
+function finishIfAllImagesDone() {
+  if (store.taskId && store.images.length > 0 && store.images.every(img => img.status === 'done')) {
+    store.finishGeneration(store.taskId)
   }
 }
 
@@ -169,7 +172,8 @@ function retrySingleImage(index: number) {
   // 构建上下文信息
   const context = {
     fullOutline: store.outline.raw || '',
-    userTopic: store.topic || ''
+    userTopic: store.topic || '',
+    recordId: store.recordId
   }
 
   // 异步执行重绘，不阻塞
@@ -177,12 +181,18 @@ function retrySingleImage(index: number) {
     .then(result => {
       if (result.success && result.image_url) {
         store.updateImage(index, result.image_url)
+        finishIfAllImagesDone()
       } else {
-        store.updateProgress(index, 'error', undefined, result.error)
+        store.updateProgress(
+          index,
+          'error',
+          undefined,
+          formatErrorMessage(result.error || result.error_message || '重绘失败', '重绘失败')
+        )
       }
     })
     .catch(e => {
-      store.updateProgress(index, 'error', undefined, String(e))
+      store.updateProgress(index, 'error', undefined, formatErrorMessage(e, '重绘失败'))
     })
     .finally(() => {
       regeneratingIndices.value.delete(index)
@@ -222,22 +232,95 @@ async function retryAllFailed() {
       },
       // onError
       (event) => {
-        store.updateProgress(event.index, 'error', undefined, event.message)
+        store.updateProgress(
+          event.index,
+          'error',
+          undefined,
+          formatErrorMessage(event.error || event.message || '补图失败', '补图失败')
+        )
       },
       // onFinish
-      () => {
+      (event) => {
         isRetrying.value = false
+        if (event.failed === 0) {
+          finishIfAllImagesDone()
+        } else {
+          store.progress.status = 'error'
+        }
       },
       // onStreamError
       (err) => {
         console.error('重试失败:', err)
         isRetrying.value = false
-        error.value = '重试失败: ' + err.message
-      }
+        error.value = normalizeApiError(err, '补图失败')
+      },
+      store.recordId
     )
   } catch (e) {
     isRetrying.value = false
-    error.value = '重试失败: ' + String(e)
+    error.value = normalizeApiError(e, '补图失败')
+  }
+}
+
+function hasGeneratedImages(record: HistoryDetail): boolean {
+  return !!record.images?.task_id && (record.images.generated || []).some(Boolean)
+}
+
+function hydrateFromHistory(record: HistoryDetail) {
+  const taskId = record.images.task_id
+  const generated = record.images.generated || []
+  const pages = record.outline.pages || []
+  const doneCount = pages.reduce((count, page, idx) => {
+    const filename = generated[page.index] || generated[idx]
+    return filename ? count + 1 : count
+  }, 0)
+
+  store.setTopic(record.title)
+  store.setOutline(record.outline.raw, pages)
+  store.setRecordId(record.id)
+  store.taskId = taskId
+  store.images = pages.map((page, idx) => {
+    const filename = generated[page.index] || generated[idx] || ''
+    return {
+      index: page.index,
+      url: filename && taskId ? getImageUrl(taskId, filename) : '',
+      status: filename ? 'done' : 'error',
+      retryable: !filename
+    }
+  })
+  store.progress.total = pages.length
+  store.progress.current = doneCount
+  store.progress.status = doneCount >= pages.length ? 'done' : 'error'
+  store.stage = doneCount >= pages.length ? 'result' : 'generating'
+}
+
+async function restoreFromHistory(): Promise<boolean> {
+  if (!store.recordId) return false
+
+  const res = await getHistory(store.recordId)
+  if (!res.success || !res.record) return false
+
+  if (!hasGeneratedImages(res.record)) return false
+
+  hydrateFromHistory(res.record)
+  return true
+}
+
+async function ensureRecord() {
+  if (store.recordId) return
+
+  console.warn('警告: recordId 不存在，尝试创建历史记录作为兜底')
+  try {
+    const result = await createHistory(store.topic, {
+      raw: store.outline.raw,
+      pages: store.outline.pages
+    })
+    if (result.success && result.record_id) {
+      store.setRecordId(result.record_id)
+      console.log('兜底创建历史记录成功:', store.recordId)
+    }
+  } catch (e) {
+    console.error('兜底创建历史记录失败:', e)
   }
 }
 
@@ -247,37 +330,9 @@ onMounted(async () => {
     return
   }
 
-  // 历史记录处理逻辑：
-  // 正常情况下，recordId 应该在大纲生成页（OutlineView）创建
-  // 这里根据 recordId 是否存在做不同处理
-  if (store.recordId) {
-    // 情况1：recordId 已存在（正常流程）
-    // 更新历史记录状态为 generating，表示图片生成已开始
-    try {
-      await updateHistory(store.recordId, { status: 'generating' })
-      console.log('历史记录状态已更新为 generating:', store.recordId)
-    } catch (e) {
-      // 更新失败不阻断生成流程，仅记录错误
-      console.error('更新历史记录状态失败:', e)
-    }
-  } else {
-    // 情况2：recordId 不存在（异常情况）
-    // 这种情况不应该发生，但作为兜底逻辑，尝试创建历史记录
-    console.warn('警告: recordId 不存在，尝试创建历史记录作为兜底')
-    try {
-      const result = await createHistory(store.topic, {
-        raw: store.outline.raw,
-        pages: store.outline.pages
-      })
-      if (result.success && result.record_id) {
-        store.setRecordId(result.record_id)
-        console.log('兜底创建历史记录成功:', store.recordId)
-      }
-    } catch (e) {
-      // 创建失败也不阻断生成流程，仅记录错误
-      console.error('兜底创建历史记录失败:', e)
-    }
-  }
+  if (await restoreFromHistory()) return
+
+  await ensureRecord()
 
   store.startGeneration()
 
@@ -299,41 +354,17 @@ onMounted(async () => {
     // onError
     (event) => {
       console.error('Error:', event)
-      store.updateProgress(event.index, 'error', undefined, event.message)
+      store.updateProgress(
+        event.index,
+        'error',
+        undefined,
+        formatErrorMessage(event.error || event.message || '图片生成失败', '图片生成失败')
+      )
     },
     // onFinish
     async (event) => {
       console.log('Finish:', event)
       store.finishGeneration(event.task_id)
-
-      // 更新历史记录
-      if (store.recordId) {
-        try {
-          // 收集所有生成的图片文件名
-          const generatedImages = event.images.filter(img => img !== null)
-
-          // 确定状态
-          let status = 'completed'
-          if (hasFailedImages.value) {
-            status = generatedImages.length > 0 ? 'partial' : 'draft'
-          }
-
-          // 获取封面图作为缩略图（只保存文件名，不是完整URL）
-          const thumbnail = generatedImages.length > 0 ? generatedImages[0] : null
-
-          await updateHistory(store.recordId, {
-            images: {
-              task_id: event.task_id,
-              generated: generatedImages
-            },
-            status: status,
-            thumbnail: thumbnail
-          })
-          console.log('历史记录已更新')
-        } catch (e) {
-          console.error('更新历史记录失败:', e)
-        }
-      }
 
       // 如果没有失败的，跳转到结果页
       if (!hasFailedImages.value) {
@@ -347,16 +378,13 @@ onMounted(async () => {
     // onStreamError
     (err) => {
       console.error('Stream Error:', err)
-      error.value = '生成失败: ' + err.message
+      error.value = normalizeApiError(err, '图片生成失败')
     },
     // userImages - 用户上传的参考图片
     store.userImages.length > 0 ? store.userImages : undefined,
     // userTopic - 用户原始输入
     store.topic,
-    // layoutMimicMode - 一键二创模式
-    store.layoutMimicMode,
-    // platform - 平台类型
-    store.platform
+    store.recordId
   )
 })
 
@@ -457,6 +485,17 @@ onUnmounted(() => {
 .status-text {
   font-size: 13px;
   color: var(--text-sub);
+}
+
+.image-error-text {
+  max-width: 85%;
+  color: #991b1b;
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .retry-btn {
