@@ -96,9 +96,13 @@
           :disabled="!modelValue.trim() || loading"
         >
           <span v-if="loading" class="spinner-sm"></span>
-          <span v-else>生成大纲</span>
+          <span>{{ loading ? '生成中' : '生成大纲' }}</span>
         </button>
       </div>
+    </div>
+
+    <div v-if="loading" class="loading-hint" role="status" aria-live="polite">
+      请稍后，这一步大概要 15-30 秒左右。
     </div>
   </div>
 </template>
@@ -538,6 +542,7 @@ defineExpose({
 
 /* 生成按钮 */
 .generate-btn {
+  min-width: 112px;
   padding: 10px 24px;
   font-size: 15px;
   border-radius: 100px;
@@ -549,6 +554,17 @@ defineExpose({
 .generate-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.loading-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 36, 66, 0.06);
+  color: var(--text-sub, #666);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: right;
 }
 
 /* 加载动画 */
