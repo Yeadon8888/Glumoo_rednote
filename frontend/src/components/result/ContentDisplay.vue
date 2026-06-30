@@ -136,7 +136,8 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { useGeneratorStore } from '../../stores/generator'
-import { generateContent, updateHistory } from '../../api'
+import { generateContent } from '../../api'
+import { formatErrorMessage } from '../../utils/errors'
 
 const store = useGeneratorStore()
 
@@ -170,27 +171,6 @@ const formattedCopywriting = computed(() => {
   return content.value.copywriting.split('\n').filter(p => p.trim())
 })
 
-// 保存内容到历史记录
-async function saveContentToHistory(titles: string[], copywriting: string, tags: string[]) {
-  if (!store.recordId) {
-    console.warn('没有 recordId，无法保存内容到历史记录')
-    return
-  }
-
-  try {
-    const result = await updateHistory(store.recordId, {
-      content: { titles, copywriting, tags }
-    })
-    if (result.success) {
-      console.log('内容已保存到历史记录')
-    } else {
-      console.error('保存内容到历史记录失败:', result.error)
-    }
-  } catch (error) {
-    console.error('保存内容到历史记录出错:', error)
-  }
-}
-
 // 生成内容
 async function handleGenerate() {
   if (loading.value) return
@@ -199,24 +179,15 @@ async function handleGenerate() {
   store.startContentGeneration()
 
   try {
-    // 调试日志：打印传递的参数
-    console.log('📝 生成内容 - 传递的参数：')
-    console.log('  topic:', store.topic)
-    console.log('  platform:', store.platform)
-    console.log('  outline.raw 长度:', store.outline.raw.length)
-    console.log('  outline.raw 前200字:', store.outline.raw.substring(0, 200))
-
-    const result = await generateContent(store.topic, store.outline.raw, store.platform)
+    const result = await generateContent(store.topic, store.outline.raw)
 
     if (result.success && result.titles && result.copywriting && result.tags) {
       store.setContent(result.titles, result.copywriting, result.tags)
-      // 保存到历史记录
-      await saveContentToHistory(result.titles, result.copywriting, result.tags)
     } else {
-      store.setContentError(result.error || '生成失败')
+      store.setContentError(formatErrorMessage(result.error || result.error_message || '生成失败', '内容生成失败'))
     }
   } catch (error: any) {
-    store.setContentError(error.message || '生成失败，请重试')
+    store.setContentError(formatErrorMessage(error, '内容生成失败'))
   } finally {
     loading.value = false
   }
