@@ -96,4 +96,3 @@ export interface ContentResponse {
   error?: AppError | string
   error_message?: string
 }
-

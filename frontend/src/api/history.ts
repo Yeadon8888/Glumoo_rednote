@@ -186,4 +186,3 @@ export async function scanAllTasks(): Promise<{
   const response = await axios.post(`${API_BASE_URL}/history/scan-all`)
   return response.data
 }
-

@@ -39,4 +39,3 @@ export async function testConnection(config: {
   const response = await axios.post(`${API_BASE_URL}/config/test`, config)
   return response.data
 }
-
