@@ -7,8 +7,8 @@ FROM node:22-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 安装 pnpm（固定 v9，避免 v10 的 approve-builds 默认策略阻断 Docker 构建）
+RUN npm install -g pnpm@9.15.9
 
 # 复制前端依赖文件
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
