@@ -4,7 +4,7 @@ import os
 import uuid
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import Dict, Any, Generator, List, Optional, Tuple
 from backend.config import Config
 from backend.generators.factory import ImageGeneratorFactory
@@ -19,6 +19,7 @@ class ImageService:
     # 并发配置
     MAX_CONCURRENT = 15  # 最大并发数
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
+    HEARTBEAT_INTERVAL = 20  # SSE 心跳间隔，避免长时间排队时连接被边缘节点断开
 
     def __init__(self, provider_name: str = None):
         """
@@ -50,6 +51,10 @@ class ImageService:
                 int(provider_config.get('max_concurrent', self.MAX_CONCURRENT)),
                 self.MAX_CONCURRENT
             )
+        )
+        self.heartbeat_interval = max(
+            5,
+            int(provider_config.get('heartbeat_interval', self.HEARTBEAT_INTERVAL))
         )
 
         # 检查是否启用短 prompt 模式
@@ -324,12 +329,31 @@ class ImageService:
                 }
             }
 
-            # 生成封面（使用用户上传的图片作为参考）
-            index, success, filename, error = self._generate_single_image(
-                cover_page, task_id, reference_image=None, full_outline=full_outline,
-                user_images=compressed_user_images, user_topic=user_topic,
-                layout_mimic_mode=layout_mimic_mode, platform=platform
-            )
+            # 生成封面（使用单独线程，等待期间持续发送 SSE 心跳）
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                cover_future = executor.submit(
+                    self._generate_single_image,
+                    cover_page, task_id, None, 0, full_outline,
+                    compressed_user_images, user_topic,
+                    layout_mimic_mode, platform
+                )
+
+                while not cover_future.done():
+                    done, _ = wait([cover_future], timeout=self.heartbeat_interval)
+                    if not done:
+                        yield {
+                            "event": "progress",
+                            "data": {
+                                "index": cover_page["index"],
+                                "status": "generating",
+                                "message": "封面仍在排队/生成中...",
+                                "current": len(generated_images),
+                                "total": total,
+                                "phase": "cover"
+                            }
+                        }
+
+                index, success, filename, error = cover_future.result()
 
             if success:
                 generated_images.append(filename)
@@ -441,55 +465,76 @@ class ImageService:
                             }
                         }
 
-                    # 收集结果
-                    for future in as_completed(future_to_page):
-                        page = future_to_page[future]
-                        try:
-                            index, success, filename, error = future.result()
+                    # 收集结果；等待期间定期发送心跳，避免 SSE 长连接空闲超时
+                    pending = set(future_to_page.keys())
+                    while pending:
+                        done, pending = wait(
+                            pending,
+                            timeout=self.heartbeat_interval,
+                            return_when=FIRST_COMPLETED
+                        )
 
-                            if success:
-                                generated_images.append(filename)
-                                self._task_states[task_id]["generated"][index] = filename
-
-                                yield {
-                                    "event": "complete",
-                                    "data": {
-                                        "index": index,
-                                        "status": "done",
-                                        "image_url": f"/api/images/{task_id}/{filename}",
-                                        "phase": "content"
-                                    }
+                        if not done:
+                            yield {
+                                "event": "progress",
+                                "data": {
+                                    "status": "generating",
+                                    "message": "图片仍在排队/生成中...",
+                                    "current": len(generated_images),
+                                    "total": total,
+                                    "phase": "content"
                                 }
-                            else:
+                            }
+                            continue
+
+                        for future in done:
+                            page = future_to_page[future]
+                            try:
+                                index, success, filename, error = future.result()
+
+                                if success:
+                                    generated_images.append(filename)
+                                    self._task_states[task_id]["generated"][index] = filename
+
+                                    yield {
+                                        "event": "complete",
+                                        "data": {
+                                            "index": index,
+                                            "status": "done",
+                                            "image_url": f"/api/images/{task_id}/{filename}",
+                                            "phase": "content"
+                                        }
+                                    }
+                                else:
+                                    failed_pages.append(page)
+                                    self._task_states[task_id]["failed"][index] = error
+
+                                    yield {
+                                        "event": "error",
+                                        "data": {
+                                            "index": index,
+                                            "status": "error",
+                                            "message": error,
+                                            "retryable": True,
+                                            "phase": "content"
+                                        }
+                                    }
+
+                            except Exception as e:
                                 failed_pages.append(page)
-                                self._task_states[task_id]["failed"][index] = error
+                                error_msg = str(e)
+                                self._task_states[task_id]["failed"][page["index"]] = error_msg
 
                                 yield {
                                     "event": "error",
                                     "data": {
-                                        "index": index,
+                                        "index": page["index"],
                                         "status": "error",
-                                        "message": error,
+                                        "message": error_msg,
                                         "retryable": True,
                                         "phase": "content"
                                     }
                                 }
-
-                        except Exception as e:
-                            failed_pages.append(page)
-                            error_msg = str(e)
-                            self._task_states[task_id]["failed"][page["index"]] = error_msg
-
-                            yield {
-                                "event": "error",
-                                "data": {
-                                    "index": page["index"],
-                                    "status": "error",
-                                    "message": error_msg,
-                                    "retryable": True,
-                                    "phase": "content"
-                                }
-                            }
             else:
                 # 顺序模式：逐个生成
                 yield {
