@@ -17,3 +17,5 @@ providers:
     model: gpt-image-2
     default_aspect_ratio: "3:4"
     image_size: 1K
+    create_retry_count: 4
+    create_retry_base_delay: 12

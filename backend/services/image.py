@@ -361,6 +361,27 @@ class ImageService:
                     }
                 }
 
+                if self._is_upstream_busy_error(error):
+                    skipped_message = (
+                        "图片服务上游繁忙，封面多次重试仍失败。本轮已暂停后续页面生成，"
+                        "请稍等 1-3 分钟后点击重试。"
+                    )
+                    logger.warning(f"暂停后续图片生成: {skipped_message}")
+                    for page in other_pages:
+                        failed_pages.append(page)
+                        self._task_states[task_id]["failed"][page["index"]] = skipped_message
+                        yield {
+                            "event": "error",
+                            "data": {
+                                "index": page["index"],
+                                "status": "error",
+                                "message": skipped_message,
+                                "retryable": True,
+                                "phase": "content"
+                            }
+                        }
+                    other_pages = []
+
         # ==================== 第二阶段：生成其他页面 ====================
         if other_pages:
             # 检查是否启用高并发模式
@@ -540,6 +561,17 @@ class ImageService:
                 "failed_indices": [p["index"] for p in failed_pages]
             }
         }
+
+    def _is_upstream_busy_error(self, error: Optional[str]) -> bool:
+        if not error:
+            return False
+        error_text = error.lower()
+        return (
+            "429" in error_text
+            or "上游繁忙" in error
+            or "上游负载已饱和" in error
+            or "fail_to_fetch_task" in error_text
+        )
 
     def retry_single_image(
         self,

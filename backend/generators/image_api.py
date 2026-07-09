@@ -2,6 +2,7 @@
 import logging
 import base64
 import time
+import random
 import requests
 from typing import Dict, Any, Optional, List, Union
 from .base import ImageGeneratorBase
@@ -20,6 +21,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        self.create_retry_count = int(config.get('create_retry_count', 4))
+        self.create_retry_base_delay = float(config.get('create_retry_base_delay', 12))
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
@@ -228,18 +231,12 @@ class ImageApiGenerator(ImageGeneratorBase):
             payload["images"] = image_uris
 
         api_url = f"{self.base_url}{self.endpoint_type}"
-        logger.info(f"Videos API 创建图片任务: {api_url}, model={model}")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+        response = self._create_video_task_with_retry(api_url, headers, payload, model)
 
         if response.status_code not in [200, 201, 202]:
             error_detail = response.text[:500]
             logger.error(f"Videos API 创建任务失败: status={response.status_code}, error={error_detail}")
-            raise Exception(
-                f"Videos API 创建任务失败 (状态码: {response.status_code})\n"
-                f"错误详情: {error_detail}\n"
-                f"请求地址: {api_url}\n"
-                f"模型: {model}"
-            )
+            self._raise_video_task_error(response.status_code, error_detail, api_url, model)
 
         result = response.json()
         image_data = self._extract_image_data_from_task_result(result)
@@ -283,6 +280,63 @@ class ImageApiGenerator(ImageGeneratorBase):
         raise Exception(
             "Videos API 图片任务超时。\n"
             f"最后响应片段: {str(last_result)[:500]}"
+        )
+
+    def _create_video_task_with_retry(
+        self,
+        api_url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        model: str
+    ) -> requests.Response:
+        last_response = None
+
+        for attempt in range(self.create_retry_count + 1):
+            logger.info(
+                f"Videos API 创建图片任务: {api_url}, model={model}, "
+                f"attempt={attempt + 1}/{self.create_retry_count + 1}"
+            )
+            response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            last_response = response
+
+            if response.status_code not in [429, 500, 502, 503, 504]:
+                return response
+
+            if attempt >= self.create_retry_count:
+                return response
+
+            wait_seconds = self._retry_delay_seconds(attempt)
+            logger.warning(
+                f"Videos API 创建任务暂时失败: status={response.status_code}, "
+                f"等待 {wait_seconds:.1f}s 后重试，error={response.text[:200]}"
+            )
+            time.sleep(wait_seconds)
+
+        return last_response
+
+    def _retry_delay_seconds(self, attempt: int) -> float:
+        return self.create_retry_base_delay * (attempt + 1) + random.uniform(0, 3)
+
+    def _raise_video_task_error(self, status_code: int, error_detail: str, api_url: str, model: str):
+        if status_code == 429:
+            raise Exception(
+                "图片服务上游繁忙，已多次自动重试但仍未排到任务。\n"
+                f"服务返回: {error_detail}\n"
+                "建议：稍等 1-3 分钟后重试，或切换到更空闲/更高配额的图片模型。"
+            )
+
+        if status_code in [500, 502, 503, 504]:
+            raise Exception(
+                f"图片服务临时不可用 (状态码: {status_code})，已自动重试但仍失败。\n"
+                f"服务返回: {error_detail}\n"
+                "建议：稍后重试。"
+            )
+
+        raise Exception(
+            f"Videos API 创建任务失败 (状态码: {status_code})\n"
+            f"错误详情: {error_detail}\n"
+            f"请求地址: {api_url}\n"
+            f"模型: {model}"
         )
 
     def _extract_image_data_from_task_result(self, result: Dict[str, Any]) -> Optional[bytes]:
