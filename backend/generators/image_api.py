@@ -519,8 +519,15 @@ class ImageApiGenerator(ImageGeneratorBase):
         """下载图片并返回二进制数据"""
         logger.info(f"下载图片: {url[:100]}...")
         try:
-            response = requests.get(url, timeout=60)
+            headers = {}
+            if self.base_url and url.startswith(self.base_url):
+                headers["Authorization"] = f"Bearer {self.api_key}"
+
+            response = requests.get(url, headers=headers, timeout=60)
             if response.status_code == 200:
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" in content_type:
+                    raise Exception(f"下载结果不是图片: {response.text[:300]}")
                 logger.info(f"✅ 图片下载成功: {len(response.content)} bytes")
                 return response.content
             else:

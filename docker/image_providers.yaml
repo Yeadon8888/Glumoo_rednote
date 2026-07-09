@@ -14,7 +14,7 @@ providers:
     api_key_env: TOKENSFACTORY_API_KEY
     base_url: https://tokensfactory.cc/v1
     endpoint_type: /v1/videos
-    model: gpt-image-2
+    model: gpt-image-2-1K
     default_aspect_ratio: "3:4"
     image_size: 1K
     create_retry_count: 4
