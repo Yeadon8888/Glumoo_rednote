@@ -44,6 +44,13 @@ class ImageService:
         # 保存配置信息
         self.provider_name = provider_name
         self.provider_config = provider_config
+        self.max_concurrent = max(
+            1,
+            min(
+                int(provider_config.get('max_concurrent', self.MAX_CONCURRENT)),
+                self.MAX_CONCURRENT
+            )
+        )
 
         # 检查是否启用短 prompt 模式
         self.use_short_prompt = provider_config.get('short_prompt', False)
@@ -401,7 +408,9 @@ class ImageService:
                 }
 
                 # 使用线程池并发生成
-                with ThreadPoolExecutor(max_workers=self.MAX_CONCURRENT) as executor:
+                logger.info(f"启用图片并发生成: pages={len(other_pages)}, max_workers={self.max_concurrent}")
+
+                with ThreadPoolExecutor(max_workers=self.max_concurrent) as executor:
                     # 提交所有任务
                     future_to_page = {
                         executor.submit(
