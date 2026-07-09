@@ -252,6 +252,7 @@ def _clear_config_cache():
     try:
         from backend.config import Config
         Config._image_providers_config = None
+        Config._text_providers_config = None
     except Exception:
         pass
 
