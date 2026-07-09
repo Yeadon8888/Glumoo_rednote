@@ -2,6 +2,7 @@ import logging
 import yaml
 import os
 from pathlib import Path
+from backend.utils.provider_config import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class Config:
                 "3. 检查 image_providers.yaml 文件"
             )
 
-        provider_config = providers[provider_name].copy()
+        provider_config = resolve_api_key(providers[provider_name])
 
         # 验证必要字段
         if not provider_config.get('api_key'):

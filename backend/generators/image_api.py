@@ -1,6 +1,7 @@
 """Image API 图片生成器"""
 import logging
 import base64
+import time
 import requests
 from typing import Dict, Any, Optional, List, Union
 from .base import ImageGeneratorBase
@@ -87,10 +88,31 @@ class ImageApiGenerator(ImageGeneratorBase):
         logger.info(f"Image API 生成图片: model={model}, aspect_ratio={aspect_ratio}, endpoint={self.endpoint_type}")
 
         # 根据端点类型选择不同的生成方式
-        if 'chat' in self.endpoint_type or 'completions' in self.endpoint_type:
+        if 'videos' in self.endpoint_type:
+            return self._generate_via_videos_api(prompt, aspect_ratio, model, reference_image, reference_images)
+        elif 'chat' in self.endpoint_type or 'completions' in self.endpoint_type:
             return self._generate_via_chat_api(prompt, aspect_ratio, model, reference_image, reference_images)
         else:
             return self._generate_via_images_api(prompt, aspect_ratio, model, reference_image, reference_images)
+
+    def _collect_reference_image_uris(
+        self,
+        reference_image: Optional[bytes] = None,
+        reference_images: Optional[List[bytes]] = None
+    ) -> List[str]:
+        all_reference_images = []
+        if reference_images and len(reference_images) > 0:
+            all_reference_images.extend(reference_images)
+        if reference_image and reference_image not in all_reference_images:
+            all_reference_images.append(reference_image)
+
+        image_uris = []
+        for idx, img_data in enumerate(all_reference_images):
+            compressed_img = compress_image(img_data, max_size_kb=200)
+            logger.debug(f"  参考图 {idx}: {len(img_data)} -> {len(compressed_img)} bytes")
+            base64_image = base64.b64encode(compressed_img).decode('utf-8')
+            image_uris.append(f"data:image/png;base64,{base64_image}")
+        return image_uris
 
     def _generate_via_images_api(
         self,
@@ -114,27 +136,14 @@ class ImageApiGenerator(ImageGeneratorBase):
             "image_size": self.image_size
         }
 
-        # 收集所有参考图片
-        all_reference_images = []
-        if reference_images and len(reference_images) > 0:
-            all_reference_images.extend(reference_images)
-        if reference_image and reference_image not in all_reference_images:
-            all_reference_images.append(reference_image)
+        image_uris = self._collect_reference_image_uris(reference_image, reference_images)
 
         # 如果有参考图片，添加到 image 数组
-        if all_reference_images:
-            logger.debug(f"  添加 {len(all_reference_images)} 张参考图片")
-            image_uris = []
-            for idx, img_data in enumerate(all_reference_images):
-                compressed_img = compress_image(img_data, max_size_kb=200)
-                logger.debug(f"  参考图 {idx}: {len(img_data)} -> {len(compressed_img)} bytes")
-                base64_image = base64.b64encode(compressed_img).decode('utf-8')
-                data_uri = f"data:image/png;base64,{base64_image}"
-                image_uris.append(data_uri)
-
+        if image_uris:
+            logger.debug(f"  添加 {len(image_uris)} 张参考图片")
             payload["image"] = image_uris
 
-            ref_count = len(all_reference_images)
+            ref_count = len(image_uris)
             enhanced_prompt = f"""参考提供的 {ref_count} 张图片的风格（色彩、光影、构图、氛围），生成一张新图片。
 
 新图片内容：{prompt}
@@ -191,6 +200,136 @@ class ImageApiGenerator(ImageGeneratorBase):
             "3. 该模型不支持 b64_json 格式\n"
             "建议：检查API文档确认返回格式要求"
         )
+
+    def _generate_via_videos_api(
+        self,
+        prompt: str,
+        aspect_ratio: str,
+        model: str,
+        reference_image: Optional[bytes] = None,
+        reference_images: Optional[List[bytes]] = None
+    ) -> bytes:
+        """通过 /v1/videos 异步任务端点生成图片。"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "seconds": "4",
+            "aspect_ratio": aspect_ratio
+        }
+
+        image_uris = self._collect_reference_image_uris(reference_image, reference_images)
+        if image_uris:
+            logger.debug(f"  添加 {len(image_uris)} 张参考图片到 videos 任务")
+            payload["images"] = image_uris
+
+        api_url = f"{self.base_url}{self.endpoint_type}"
+        logger.info(f"Videos API 创建图片任务: {api_url}, model={model}")
+        response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+
+        if response.status_code not in [200, 201, 202]:
+            error_detail = response.text[:500]
+            logger.error(f"Videos API 创建任务失败: status={response.status_code}, error={error_detail}")
+            raise Exception(
+                f"Videos API 创建任务失败 (状态码: {response.status_code})\n"
+                f"错误详情: {error_detail}\n"
+                f"请求地址: {api_url}\n"
+                f"模型: {model}"
+            )
+
+        result = response.json()
+        image_data = self._extract_image_data_from_task_result(result)
+        if image_data:
+            return image_data
+
+        task_id = result.get("task_id") or result.get("id") or result.get("data", {}).get("id")
+        if not task_id:
+            raise Exception(
+                f"Videos API 响应中未找到 task_id。\n"
+                f"API响应片段: {str(result)[:500]}"
+            )
+
+        status_url = f"{self.base_url}{self.endpoint_type.rstrip('/')}/{task_id}"
+        logger.info(f"Videos API 轮询任务: {task_id}")
+
+        deadline = time.time() + 360
+        last_result = result
+        while time.time() < deadline:
+            time.sleep(5)
+            poll_response = requests.get(status_url, headers=headers, timeout=60)
+            if poll_response.status_code != 200:
+                raise Exception(
+                    f"Videos API 查询任务失败 (状态码: {poll_response.status_code})\n"
+                    f"错误详情: {poll_response.text[:300]}"
+                )
+
+            last_result = poll_response.json()
+            image_data = self._extract_image_data_from_task_result(last_result)
+            if image_data:
+                logger.info("✅ Videos API 图片生成成功")
+                return image_data
+
+            status = str(last_result.get("status") or last_result.get("state") or "").lower()
+            if status in ["failed", "failure", "error", "cancelled", "canceled"]:
+                raise Exception(
+                    f"Videos API 图片任务失败: {status}\n"
+                    f"任务响应片段: {str(last_result)[:500]}"
+                )
+
+        raise Exception(
+            "Videos API 图片任务超时。\n"
+            f"最后响应片段: {str(last_result)[:500]}"
+        )
+
+    def _extract_image_data_from_task_result(self, result: Dict[str, Any]) -> Optional[bytes]:
+        """从异步图片任务响应中提取图片 URL 或 data URL。"""
+        url = self._extract_image_url(result)
+        if not url:
+            return None
+
+        if url.startswith("data:image"):
+            return base64.b64decode(url.split(",", 1)[1])
+        return self._download_image(url)
+
+    def _extract_image_url(self, result: Any) -> Optional[str]:
+        if isinstance(result, str):
+            if result.startswith("http://") or result.startswith("https://") or result.startswith("data:image"):
+                return result
+            return None
+
+        if isinstance(result, list):
+            for item in result:
+                found = self._extract_image_url(item)
+                if found:
+                    return found
+            return None
+
+        if not isinstance(result, dict):
+            return None
+
+        for key in ["image_url", "url", "output_url", "result_url"]:
+            value = result.get(key)
+            if isinstance(value, str) and (
+                value.startswith("http://") or value.startswith("https://") or value.startswith("data:image")
+            ):
+                return value
+
+        metadata = result.get("metadata")
+        if isinstance(metadata, dict):
+            found = self._extract_image_url(metadata.get("result_urls"))
+            if found:
+                return found
+
+        for key in ["data", "output", "result", "results", "images"]:
+            found = self._extract_image_url(result.get(key))
+            if found:
+                return found
+
+        return None
 
     def _generate_via_chat_api(
         self,

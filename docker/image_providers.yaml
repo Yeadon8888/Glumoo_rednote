@@ -5,13 +5,15 @@
 # 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
 # 3. Web 界面: 在"系统设置"页面配置 API Key
 #
-active_provider: gemini
+active_provider: tokensfactory_gpt_image
 
 providers:
-  # Google Gemini 图片生成
-  gemini:
-    type: google_genai
-    api_key: ""  # 留空，从环境变量 GOOGLE_API_KEY 读取
-    model: gemini-3-pro-image-preview
-    high_concurrency: false  # 是否启用高并发，GCP 300$ 试用账号不建议启用
-
+  # TokensFactory async image API
+  tokensfactory_gpt_image:
+    type: image_api
+    api_key_env: TOKENSFACTORY_API_KEY
+    base_url: https://tokensfactory.cc/v1
+    endpoint_type: /v1/videos
+    model: gpt-image-2-1K
+    default_aspect_ratio: 3:4
+    image_size: 1K

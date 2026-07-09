@@ -12,6 +12,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from backend.utils.text_client import get_text_chat_client
+from backend.utils.provider_config import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class ContentService:
                 "解决方案：在系统设置中选择一个可用的服务商"
             )
 
-        provider_config = providers.get(active_provider, {})
+        provider_config = resolve_api_key(providers.get(active_provider, {}))
 
         if not provider_config.get('api_key'):
             logger.error(f"文本服务商 [{active_provider}] 未配置 API Key")

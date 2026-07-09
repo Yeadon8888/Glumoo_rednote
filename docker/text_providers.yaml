@@ -5,14 +5,15 @@
 # 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
 # 3. Web 界面: 在"系统设置"页面配置 API Key
 #
-active_provider: gemini
+active_provider: tokensfactory
 
 providers:
-  # Google Gemini（原生接口）
-  gemini:
-    type: google_gemini
-    api_key: ""  # 留空，从环境变量 GOOGLE_API_KEY 读取
-    model: gemini-3-pro-preview
-    temperature: 1.0
+  # TokensFactory OpenAI-compatible text API
+  tokensfactory:
+    type: openai_compatible
+    api_key_env: TOKENSFACTORY_API_KEY
+    base_url: https://tokensfactory.cc/v1
+    endpoint_type: /v1/chat/completions
+    model: gemini-3.5-flash
+    temperature: 0.7
     max_output_tokens: 8000
-
