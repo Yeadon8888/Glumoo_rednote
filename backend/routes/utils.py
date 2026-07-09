@@ -99,6 +99,9 @@ def prepare_providers_for_response(providers: dict) -> dict:
             provider_copy['api_key_masked'] = mask_api_key(provider_copy['api_key'])
             # 不返回实际值，前端用空字符串表示"不修改"
             provider_copy['api_key'] = ''
+        elif provider_copy.get('api_key_env'):
+            provider_copy['api_key_masked'] = f"env:{provider_copy['api_key_env']}"
+            provider_copy['api_key'] = ''
         else:
             provider_copy['api_key_masked'] = ''
             provider_copy['api_key'] = ''

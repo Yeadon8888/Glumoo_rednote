@@ -214,7 +214,6 @@ def _update_provider_config(config_path: Path, new_data: dict):
                     new_provider_config.pop('api_key', None)
 
             # 移除不需要保存的字段
-            new_provider_config.pop('api_key_env', None)
             new_provider_config.pop('api_key_masked', None)
 
         existing_config['providers'] = new_providers
