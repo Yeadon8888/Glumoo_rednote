@@ -8,10 +8,12 @@
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import NamedTuple
 import yaml
 from flask import Blueprint, request, jsonify
+from backend.utils.provider_config import resolve_api_key
 from .utils import (
     api_error_response,
     prepare_providers_for_response,
@@ -97,6 +99,12 @@ def create_config_blueprint():
         - message: 结果消息
         """
         try:
+            if _provider_config_locked():
+                return jsonify({
+                    "success": False,
+                    "error": "生产环境已锁定模型配置，请通过部署配置更新"
+                }), 403
+
             data = request.get_json()
 
             # 更新图片生成配置
@@ -195,6 +203,13 @@ def create_config_blueprint():
 
 # ==================== 辅助函数 ====================
 
+def _provider_config_locked() -> bool:
+    """Return whether runtime provider configuration writes are disabled."""
+    return os.getenv('PROVIDER_CONFIG_LOCKED', '').strip().lower() in {
+        '1', 'true', 'yes', 'on'
+    }
+
+
 def _read_config(path: Path, default: dict) -> dict:
     """读取配置文件"""
     if path.exists():
@@ -286,7 +301,7 @@ def _load_provider_config(provider_type: str, provider_name: str, config: dict) 
             providers = yaml_config.get('providers', {})
 
             if provider_name in providers:
-                saved = providers[provider_name]
+                saved = resolve_api_key(providers[provider_name])
                 config['api_key'] = saved.get('api_key')
 
                 if not config['base_url']:
