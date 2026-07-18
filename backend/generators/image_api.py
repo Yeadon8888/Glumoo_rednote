@@ -1,9 +1,12 @@
 """Image API 图片生成器"""
 import logging
 import base64
+import io
 import time
+import random
 import requests
 from typing import Dict, Any, Optional, List, Union
+from PIL import Image
 from .base import ImageGeneratorBase
 from ..utils.image_compressor import compress_image
 
@@ -20,6 +23,11 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        self.quality = config.get('quality', 'low')
+        self.output_format = config.get('format', 'png')
+        self.edit_endpoint = config.get('edit_endpoint', '/v1/images/edits')
+        self.create_retry_count = int(config.get('create_retry_count', 4))
+        self.create_retry_base_delay = float(config.get('create_retry_base_delay', 12))
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
@@ -89,11 +97,18 @@ class ImageApiGenerator(ImageGeneratorBase):
 
         # 根据端点类型选择不同的生成方式
         if 'videos' in self.endpoint_type:
-            return self._generate_via_videos_api(prompt, aspect_ratio, model, reference_image, reference_images)
+            image_data = self._generate_via_videos_api(
+                prompt, aspect_ratio, model, reference_image, reference_images
+            )
         elif 'chat' in self.endpoint_type or 'completions' in self.endpoint_type:
-            return self._generate_via_chat_api(prompt, aspect_ratio, model, reference_image, reference_images)
+            image_data = self._generate_via_chat_api(
+                prompt, aspect_ratio, model, reference_image, reference_images
+            )
         else:
-            return self._generate_via_images_api(prompt, aspect_ratio, model, reference_image, reference_images)
+            image_data = self._generate_via_images_api(
+                prompt, aspect_ratio, model, reference_image, reference_images
+            )
+        return self._normalize_output_aspect_ratio(image_data, aspect_ratio)
 
     def _collect_reference_image_uris(
         self,
@@ -122,42 +137,62 @@ class ImageApiGenerator(ImageGeneratorBase):
         reference_image: Optional[bytes] = None,
         reference_images: Optional[List[bytes]] = None
     ) -> bytes:
-        """通过 /v1/images/generations 端点生成图片"""
+        """通过同步 generations 或 edits 端点生成图片。"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 TokensFactory-Glumoo/1.0"
         }
 
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "response_format": "b64_json",
-            "aspect_ratio": aspect_ratio,
-            "image_size": self.image_size
-        }
+        size = self._generation_size(aspect_ratio)
+        safe_prompt = (
+            f"{prompt}\n\n输出构图要求：竖版 {aspect_ratio}；所有标题、正文、产品和关键信息"
+            f"都放在中央 {aspect_ratio} 安全区内，四周保留可裁切留白。"
+        )
+        all_reference_images = self._collect_reference_images(
+            reference_image, reference_images
+        )
 
-        image_uris = self._collect_reference_image_uris(reference_image, reference_images)
-
-        # 如果有参考图片，添加到 image 数组
-        if image_uris:
-            logger.debug(f"  添加 {len(image_uris)} 张参考图片")
-            payload["image"] = image_uris
-
-            ref_count = len(image_uris)
-            enhanced_prompt = f"""参考提供的 {ref_count} 张图片的风格（色彩、光影、构图、氛围），生成一张新图片。
-
-新图片内容：{prompt}
-
-要求：
-1. 保持相似的色调和氛围
-2. 使用相似的光影处理
-3. 保持一致的画面质感
-4. 如果参考图中有人物或产品，可以适当融入"""
-            payload["prompt"] = enhanced_prompt
-
-        api_url = f"{self.base_url}{self.endpoint_type}"
-        logger.debug(f"  发送请求到: {api_url}")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+        if all_reference_images:
+            api_url = f"{self.base_url}{self.edit_endpoint}"
+            data = {
+                "model": model,
+                "prompt": safe_prompt,
+                "n": "1",
+                "size": size,
+                "quality": self.quality,
+                "format": self.output_format,
+            }
+            files = []
+            for index, image in enumerate(all_reference_images):
+                compressed = compress_image(image, max_size_kb=200)
+                files.append((
+                    "image[]",
+                    (
+                        f"reference-{index + 1}.{self._image_extension(compressed)}",
+                        compressed,
+                        self._image_mime(compressed),
+                    ),
+                ))
+            logger.info(f"Images Edits API: {api_url}, references={len(files)}")
+            response = self._post_with_retry(
+                api_url, headers, model, data=data, files=files, timeout=300
+            )
+        else:
+            api_url = f"{self.base_url}{self.endpoint_type}"
+            payload = {
+                "model": model,
+                "prompt": safe_prompt,
+                "n": 1,
+                "size": size,
+                "quality": self.quality,
+                "format": self.output_format,
+            }
+            json_headers = {**headers, "Content-Type": "application/json"}
+            logger.info(f"Images Generations API: {api_url}, size={size}")
+            response = self._post_with_retry(
+                api_url, json_headers, model, json=payload, timeout=300
+            )
 
         if response.status_code != 200:
             error_detail = response.text[:500]
@@ -175,20 +210,10 @@ class ImageApiGenerator(ImageGeneratorBase):
             )
 
         result = response.json()
-        logger.debug(f"  API 响应: data 长度={len(result.get('data', []))}")
-
-        if "data" in result and len(result["data"]) > 0:
-            item = result["data"][0]
-
-            if "b64_json" in item:
-                b64_data_uri = item["b64_json"]
-                if b64_data_uri.startswith('data:'):
-                    b64_string = b64_data_uri.split(',', 1)[1]
-                else:
-                    b64_string = b64_data_uri
-                image_data = base64.b64decode(b64_string)
-                logger.info(f"✅ Image API 图片生成成功: {len(image_data)} bytes")
-                return image_data
+        image_data = self._extract_sync_image_data(result)
+        if image_data:
+            logger.info(f"✅ Image API 图片生成成功: {len(image_data)} bytes")
+            return image_data
 
         logger.error(f"无法从响应中提取图片数据: {str(result)[:200]}")
         raise Exception(
@@ -200,6 +225,107 @@ class ImageApiGenerator(ImageGeneratorBase):
             "3. 该模型不支持 b64_json 格式\n"
             "建议：检查API文档确认返回格式要求"
         )
+
+    @staticmethod
+    def _collect_reference_images(
+        reference_image: Optional[bytes],
+        reference_images: Optional[List[bytes]],
+    ) -> List[bytes]:
+        images = list(reference_images or [])
+        if reference_image and reference_image not in images:
+            images.append(reference_image)
+        return images
+
+    @staticmethod
+    def _image_mime(data: bytes) -> str:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+            return "image/webp"
+        return "application/octet-stream"
+
+    @classmethod
+    def _image_extension(cls, data: bytes) -> str:
+        return {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/webp": "webp",
+        }.get(cls._image_mime(data), "bin")
+
+    def _post_with_retry(
+        self,
+        api_url: str,
+        headers: Dict[str, str],
+        model: str,
+        **request_kwargs,
+    ) -> requests.Response:
+        last_response = None
+        for attempt in range(self.create_retry_count + 1):
+            response = requests.post(api_url, headers=headers, **request_kwargs)
+            last_response = response
+            if response.status_code not in [429, 500, 502, 503, 504]:
+                return response
+            if attempt >= self.create_retry_count:
+                return response
+            wait_seconds = self._retry_delay_seconds(attempt)
+            logger.warning(
+                f"Images API 暂时失败: status={response.status_code}, model={model}, "
+                f"等待 {wait_seconds:.1f}s 后重试"
+            )
+            time.sleep(wait_seconds)
+        return last_response
+
+    def _extract_sync_image_data(self, result: Dict[str, Any]) -> Optional[bytes]:
+        data = result.get("data")
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            return None
+        item = data[0]
+        b64_value = item.get("b64_json")
+        if isinstance(b64_value, str) and b64_value:
+            return base64.b64decode(b64_value.split(',', 1)[-1])
+        url = item.get("url")
+        if isinstance(url, str) and url:
+            return self._download_image(url)
+        return None
+
+    @staticmethod
+    def _generation_size(aspect_ratio: str) -> str:
+        if aspect_ratio in {"1:1"}:
+            return "1024x1024"
+        if aspect_ratio in {"16:9", "3:2", "4:3", "5:4"}:
+            return "1536x1024"
+        return "1024x1536"
+
+    @staticmethod
+    def _normalize_output_aspect_ratio(image_data: bytes, aspect_ratio: str) -> bytes:
+        try:
+            width_text, height_text = aspect_ratio.split(':', 1)
+            target_ratio = float(width_text) / float(height_text)
+            with Image.open(io.BytesIO(image_data)) as image:
+                current_ratio = image.width / image.height
+                if abs(current_ratio - target_ratio) <= 0.005:
+                    return image_data
+                if current_ratio > target_ratio:
+                    crop_width = max(1, round(image.height * target_ratio))
+                    left = max(0, (image.width - crop_width) // 2)
+                    box = (left, 0, left + crop_width, image.height)
+                else:
+                    crop_height = max(1, round(image.width / target_ratio))
+                    top = max(0, (image.height - crop_height) // 2)
+                    box = (0, top, image.width, top + crop_height)
+                cropped = image.crop(box).convert("RGB")
+                output = io.BytesIO()
+                cropped.save(output, format="PNG", optimize=True)
+                logger.info(
+                    f"图片比例已校正: {image.width}x{image.height} -> "
+                    f"{cropped.width}x{cropped.height} ({aspect_ratio})"
+                )
+                return output.getvalue()
+        except (ValueError, ZeroDivisionError, OSError):
+            logger.warning(f"无法校正图片比例，保留原图: aspect_ratio={aspect_ratio}")
+            return image_data
 
     def _generate_via_videos_api(
         self,
@@ -228,18 +354,12 @@ class ImageApiGenerator(ImageGeneratorBase):
             payload["images"] = image_uris
 
         api_url = f"{self.base_url}{self.endpoint_type}"
-        logger.info(f"Videos API 创建图片任务: {api_url}, model={model}")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+        response = self._create_video_task_with_retry(api_url, headers, payload, model)
 
         if response.status_code not in [200, 201, 202]:
             error_detail = response.text[:500]
             logger.error(f"Videos API 创建任务失败: status={response.status_code}, error={error_detail}")
-            raise Exception(
-                f"Videos API 创建任务失败 (状态码: {response.status_code})\n"
-                f"错误详情: {error_detail}\n"
-                f"请求地址: {api_url}\n"
-                f"模型: {model}"
-            )
+            self._raise_video_task_error(response.status_code, error_detail, api_url, model)
 
         result = response.json()
         image_data = self._extract_image_data_from_task_result(result)
@@ -283,6 +403,63 @@ class ImageApiGenerator(ImageGeneratorBase):
         raise Exception(
             "Videos API 图片任务超时。\n"
             f"最后响应片段: {str(last_result)[:500]}"
+        )
+
+    def _create_video_task_with_retry(
+        self,
+        api_url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        model: str
+    ) -> requests.Response:
+        last_response = None
+
+        for attempt in range(self.create_retry_count + 1):
+            logger.info(
+                f"Videos API 创建图片任务: {api_url}, model={model}, "
+                f"attempt={attempt + 1}/{self.create_retry_count + 1}"
+            )
+            response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            last_response = response
+
+            if response.status_code not in [429, 500, 502, 503, 504]:
+                return response
+
+            if attempt >= self.create_retry_count:
+                return response
+
+            wait_seconds = self._retry_delay_seconds(attempt)
+            logger.warning(
+                f"Videos API 创建任务暂时失败: status={response.status_code}, "
+                f"等待 {wait_seconds:.1f}s 后重试，error={response.text[:200]}"
+            )
+            time.sleep(wait_seconds)
+
+        return last_response
+
+    def _retry_delay_seconds(self, attempt: int) -> float:
+        return self.create_retry_base_delay * (attempt + 1) + random.uniform(0, 3)
+
+    def _raise_video_task_error(self, status_code: int, error_detail: str, api_url: str, model: str):
+        if status_code == 429:
+            raise Exception(
+                "图片服务上游繁忙，已多次自动重试但仍未排到任务。\n"
+                f"服务返回: {error_detail}\n"
+                "建议：稍等 1-3 分钟后重试，或切换到更空闲/更高配额的图片模型。"
+            )
+
+        if status_code in [500, 502, 503, 504]:
+            raise Exception(
+                f"图片服务临时不可用 (状态码: {status_code})，已自动重试但仍失败。\n"
+                f"服务返回: {error_detail}\n"
+                "建议：稍后重试。"
+            )
+
+        raise Exception(
+            f"Videos API 创建任务失败 (状态码: {status_code})\n"
+            f"错误详情: {error_detail}\n"
+            f"请求地址: {api_url}\n"
+            f"模型: {model}"
         )
 
     def _extract_image_data_from_task_result(self, result: Dict[str, Any]) -> Optional[bytes]:

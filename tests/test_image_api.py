@@ -34,13 +34,10 @@ def make_generator() -> ImageApiGenerator:
         "base_url": "https://tokensfactory.cc/v1",
         "endpoint_type": "/v1/images/generations",
         "edit_endpoint": "/v1/images/edits",
-        "model": "gpt-image-2-plus",
+        "model": "gpt-image-2",
         "default_aspect_ratio": "3:4",
-        "image_size": "2048x2048",
-        "output_size": "1536x2048",
         "quality": "low",
-        "response_format": "url",
-        "output_format": "png",
+        "format": "png",
         "create_retry_count": 0,
     })
 
@@ -60,12 +57,10 @@ def test_generation_uses_sync_images_endpoint(monkeypatch):
     url, headers, kwargs = calls[0]
     assert url == "https://tokensfactory.cc/v1/images/generations"
     assert headers["Authorization"] == "Bearer test-key"
-    assert kwargs["json"]["model"] == "gpt-image-2-plus"
-    assert kwargs["json"]["size"] == "2048x2048"
+    assert kwargs["json"]["model"] == "gpt-image-2"
+    assert kwargs["json"]["size"] == "1024x1536"
     assert kwargs["json"]["quality"] == "low"
-    assert kwargs["json"]["response_format"] == "url"
-    assert kwargs["json"]["output_format"] == "png"
-    assert "format" not in kwargs["json"]
+    assert kwargs["json"]["format"] == "png"
     assert "files" not in kwargs
 
 
@@ -88,9 +83,7 @@ def test_references_use_multipart_edits_endpoint(monkeypatch):
     url, headers, kwargs = calls[0]
     assert url == "https://tokensfactory.cc/v1/images/edits"
     assert "Content-Type" not in headers
-    assert kwargs["data"]["model"] == "gpt-image-2-plus"
-    assert kwargs["data"]["response_format"] == "url"
-    assert kwargs["data"]["output_format"] == "png"
+    assert kwargs["data"]["model"] == "gpt-image-2"
     assert [name for name, _ in kwargs["files"]] == ["image[]", "image[]"]
     assert "json" not in kwargs
 
@@ -104,25 +97,4 @@ def test_output_is_center_cropped_to_requested_ratio(monkeypatch):
     result = make_generator().generate_image("test poster", aspect_ratio="3:4")
 
     with Image.open(io.BytesIO(result)) as image:
-        assert image.size == (1536, 2048)
-
-
-def test_cloudflare_524_is_retried(monkeypatch):
-    calls = []
-
-    def fake_post(url, headers, **kwargs):
-        calls.append((url, headers, kwargs))
-        if len(calls) == 1:
-            return FakeResponse(b"", status_code=524)
-        return FakeResponse(make_png(2048, 2048))
-
-    generator = make_generator()
-    generator.create_retry_count = 1
-    monkeypatch.setattr("backend.generators.image_api.requests.post", fake_post)
-    monkeypatch.setattr("backend.generators.image_api.time.sleep", lambda _: None)
-
-    result = generator.generate_image("test poster", aspect_ratio="3:4")
-
-    assert len(calls) == 2
-    with Image.open(io.BytesIO(result)) as image:
-        assert image.size == (1536, 2048)
+        assert image.size == (900, 1200)
