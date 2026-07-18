@@ -13,10 +13,13 @@ providers:
     type: image_api
     api_key_env: TOKENSFACTORY_API_KEY
     base_url: https://tokensfactory.cc/v1
-    endpoint_type: /v1/videos
-    model: gpt-image-2-1K
+    endpoint_type: /v1/images/generations
+    edit_endpoint: /v1/images/edits
+    model: gpt-image-2
     default_aspect_ratio: "3:4"
-    image_size: 1K
+    image_size: 1024x1536
+    quality: low
+    format: png
     high_concurrency: true
     max_concurrent: 5
     create_retry_count: 4
