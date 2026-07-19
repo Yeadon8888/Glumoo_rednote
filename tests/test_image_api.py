@@ -33,11 +33,11 @@ def make_generator() -> ImageApiGenerator:
         "api_key": "test-key",
         "base_url": "https://tokensfactory.cc/v1",
         "endpoint_type": "/v1/images/generations",
-        "reference_mode": "json_images",
-        "include_output_options": False,
-        "model": "gpt-image-2-all",
+        "edit_endpoint": "/v1/images/edits",
+        "model": "gpt-image-2",
         "default_aspect_ratio": "3:4",
-        "image_size": "1200x1600",
+        "quality": "low",
+        "format": "png",
         "create_retry_count": 0,
     })
 
@@ -57,14 +57,14 @@ def test_generation_uses_sync_images_endpoint(monkeypatch):
     url, headers, kwargs = calls[0]
     assert url == "https://tokensfactory.cc/v1/images/generations"
     assert headers["Authorization"] == "Bearer test-key"
-    assert kwargs["json"]["model"] == "gpt-image-2-all"
-    assert kwargs["json"]["size"] == "1200x1600"
-    assert "quality" not in kwargs["json"]
-    assert "format" not in kwargs["json"]
+    assert kwargs["json"]["model"] == "gpt-image-2"
+    assert kwargs["json"]["size"] == "1024x1536"
+    assert kwargs["json"]["quality"] == "low"
+    assert kwargs["json"]["format"] == "png"
     assert "files" not in kwargs
 
 
-def test_references_use_json_images_on_generations_endpoint(monkeypatch):
+def test_references_use_multipart_edits_endpoint(monkeypatch):
     calls = []
 
     def fake_post(url, headers, **kwargs):
@@ -81,12 +81,11 @@ def test_references_use_json_images_on_generations_endpoint(monkeypatch):
     )
 
     url, headers, kwargs = calls[0]
-    assert url == "https://tokensfactory.cc/v1/images/generations"
-    assert headers["Content-Type"] == "application/json"
-    assert kwargs["json"]["model"] == "gpt-image-2-all"
-    assert len(kwargs["json"]["images"]) == 2
-    assert all(value.startswith("data:image/png;base64,") for value in kwargs["json"]["images"])
-    assert "files" not in kwargs
+    assert url == "https://tokensfactory.cc/v1/images/edits"
+    assert "Content-Type" not in headers
+    assert kwargs["data"]["model"] == "gpt-image-2"
+    assert [name for name, _ in kwargs["files"]] == ["image[]", "image[]"]
+    assert "json" not in kwargs
 
 
 def test_output_is_center_cropped_to_requested_ratio(monkeypatch):

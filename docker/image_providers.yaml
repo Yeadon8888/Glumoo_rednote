@@ -8,17 +8,18 @@
 active_provider: tokensfactory_gpt_image
 
 providers:
-  # TokensFactory synchronous image API
+  # TokensFactory async image API
   tokensfactory_gpt_image:
     type: image_api
     api_key_env: TOKENSFACTORY_API_KEY
     base_url: https://tokensfactory.cc/v1
     endpoint_type: /v1/images/generations
-    reference_mode: json_images
-    include_output_options: false
-    model: gpt-image-2-all
+    edit_endpoint: /v1/images/edits
+    model: gpt-image-2
     default_aspect_ratio: "3:4"
-    image_size: 1200x1600
+    image_size: 1024x1536
+    quality: low
+    format: png
     high_concurrency: true
     max_concurrent: 5
     create_retry_count: 4

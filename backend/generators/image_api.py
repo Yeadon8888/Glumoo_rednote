@@ -26,8 +26,6 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.quality = config.get('quality', 'low')
         self.output_format = config.get('format', 'png')
         self.edit_endpoint = config.get('edit_endpoint', '/v1/images/edits')
-        self.reference_mode = config.get('reference_mode', 'multipart_edit')
-        self.include_output_options = bool(config.get('include_output_options', True))
         self.create_retry_count = int(config.get('create_retry_count', 4))
         self.create_retry_base_delay = float(config.get('create_retry_base_delay', 12))
 
@@ -128,7 +126,7 @@ class ImageApiGenerator(ImageGeneratorBase):
             compressed_img = compress_image(img_data, max_size_kb=200)
             logger.debug(f"  参考图 {idx}: {len(img_data)} -> {len(compressed_img)} bytes")
             base64_image = base64.b64encode(compressed_img).decode('utf-8')
-            image_uris.append(f"data:{self._image_mime(compressed_img)};base64,{base64_image}")
+            image_uris.append(f"data:image/png;base64,{base64_image}")
         return image_uris
 
     def _generate_via_images_api(
@@ -139,7 +137,7 @@ class ImageApiGenerator(ImageGeneratorBase):
         reference_image: Optional[bytes] = None,
         reference_images: Optional[List[bytes]] = None
     ) -> bytes:
-        """通过同步 generations 端点生成图片，必要时兼容 edits。"""
+        """通过同步 generations 或 edits 端点生成图片。"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
@@ -155,7 +153,7 @@ class ImageApiGenerator(ImageGeneratorBase):
             reference_image, reference_images
         )
 
-        if all_reference_images and self.reference_mode == 'multipart_edit':
+        if all_reference_images:
             api_url = f"{self.base_url}{self.edit_endpoint}"
             data = {
                 "model": model,
@@ -182,26 +180,16 @@ class ImageApiGenerator(ImageGeneratorBase):
             )
         else:
             api_url = f"{self.base_url}{self.endpoint_type}"
-            payload: Dict[str, Any] = {
+            payload = {
                 "model": model,
                 "prompt": safe_prompt,
                 "n": 1,
                 "size": size,
+                "quality": self.quality,
+                "format": self.output_format,
             }
-            if self.include_output_options:
-                payload.update({
-                    "quality": self.quality,
-                    "format": self.output_format,
-                })
-            if all_reference_images:
-                payload["images"] = self._collect_reference_image_uris(
-                    reference_image, reference_images
-                )
             json_headers = {**headers, "Content-Type": "application/json"}
-            logger.info(
-                f"Images Generations API: {api_url}, size={size}, "
-                f"references={len(all_reference_images)}"
-            )
+            logger.info(f"Images Generations API: {api_url}, size={size}")
             response = self._post_with_retry(
                 api_url, json_headers, model, json=payload, timeout=300
             )
@@ -302,15 +290,8 @@ class ImageApiGenerator(ImageGeneratorBase):
             return self._download_image(url)
         return None
 
-    def _generation_size(self, aspect_ratio: str) -> str:
-        if self.model == "gpt-image-2-all":
-            return {
-                "1:1": "1024x1024",
-                "3:4": "1200x1600",
-                "4:3": "1600x1200",
-                "9:16": "864x1536",
-                "16:9": "1536x864",
-            }.get(aspect_ratio, "1200x1600")
+    @staticmethod
+    def _generation_size(aspect_ratio: str) -> str:
         if aspect_ratio in {"1:1"}:
             return "1024x1024"
         if aspect_ratio in {"16:9", "3:2", "4:3", "5:4"}:
