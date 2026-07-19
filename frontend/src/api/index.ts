@@ -2,6 +2,13 @@ import axios from 'axios'
 
 const API_BASE_URL = '/api'
 
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.error || error.message || fallback
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
 export interface Page {
   index: number
   type: 'cover' | 'content' | 'summary'
@@ -36,35 +43,39 @@ export async function generateOutline(
   images?: File[],
   platform?: 'xiaohongshu' | 'instagram'
 ): Promise<OutlineResponse & { has_images?: boolean }> {
-  // 如果有图片，使用 FormData
-  if (images && images.length > 0) {
-    const formData = new FormData()
-    formData.append('topic', topic)
-    if (platform) {
-      formData.append('platform', platform)
-    }
-    images.forEach((file) => {
-      formData.append('images', file)
-    })
-
-    const response = await axios.post<OutlineResponse & { has_images?: boolean }>(
-      `${API_BASE_URL}/outline`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+  try {
+    // 如果有图片，使用 FormData
+    if (images && images.length > 0) {
+      const formData = new FormData()
+      formData.append('topic', topic)
+      if (platform) {
+        formData.append('platform', platform)
       }
-    )
-    return response.data
-  }
+      images.forEach((file) => {
+        formData.append('images', file)
+      })
 
-  // 无图片，使用 JSON
-  const response = await axios.post<OutlineResponse>(`${API_BASE_URL}/outline`, {
-    topic,
-    platform: platform || 'xiaohongshu'
-  })
-  return response.data
+      const response = await axios.post<OutlineResponse & { has_images?: boolean }>(
+        `${API_BASE_URL}/outline`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      )
+      return response.data
+    }
+
+    // 无图片，使用 JSON
+    const response = await axios.post<OutlineResponse>(`${API_BASE_URL}/outline`, {
+      topic,
+      platform: platform || 'xiaohongshu'
+    })
+    return response.data
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, '生成大纲失败，请重试'))
+  }
 }
 
 // 获取图片 URL（新格式：task_id/filename）
@@ -804,10 +815,14 @@ export async function generateContent(
   outline: string,
   platform?: 'xiaohongshu' | 'instagram'
 ): Promise<ContentResponse> {
-  const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content`, {
-    topic,
-    outline,
-    platform: platform || 'xiaohongshu'
-  })
-  return response.data
+  try {
+    const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content`, {
+      topic,
+      outline,
+      platform: platform || 'xiaohongshu'
+    })
+    return response.data
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, '生成标题和文案失败，请重试'))
+  }
 }

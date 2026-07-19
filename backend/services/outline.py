@@ -5,7 +5,7 @@ import base64
 import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from backend.utils.text_client import get_text_chat_client
+from backend.utils.text_client import ProviderAPIError, get_text_chat_client
 from backend.utils.provider_config import resolve_api_key
 
 logger = logging.getLogger(__name__)
@@ -200,6 +200,13 @@ class OutlineService:
                 "has_images": images is not None and len(images) > 0
             }
 
+        except ProviderAPIError as e:
+            logger.error(f"大纲生成失败: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_code": e.code,
+            }
         except Exception as e:
             error_msg = str(e)
             logger.error(f"大纲生成失败: {error_msg}")

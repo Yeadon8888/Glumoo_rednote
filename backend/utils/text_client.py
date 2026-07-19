@@ -8,6 +8,15 @@ from typing import List, Optional, Union
 from .image_compressor import compress_image
 
 
+class ProviderAPIError(Exception):
+    """Structured error returned by an upstream text provider."""
+
+    def __init__(self, message: str, status_code: int, code: str = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
 def retry_on_429(max_retries=3, base_delay=2):
     """429 错误自动重试装饰器"""
     def decorator(func):
@@ -164,6 +173,27 @@ class TextChatClient:
         if response.status_code != 200:
             error_detail = response.text[:500]
             status_code = response.status_code
+            provider_code = None
+            provider_message = ""
+
+            try:
+                error_payload = response.json().get("error", {})
+                if isinstance(error_payload, dict):
+                    provider_code = error_payload.get("code")
+                    provider_message = str(error_payload.get("message", ""))
+            except (ValueError, AttributeError):
+                pass
+
+            quota_markers = ("额度不足", "余额不足", "insufficient_user_quota")
+            quota_text = f"{provider_code or ''} {provider_message} {error_detail}".lower()
+            if provider_code == "insufficient_user_quota" or any(
+                marker.lower() in quota_text for marker in quota_markers
+            ):
+                raise ProviderAPIError(
+                    "TokensFactory 账户余额不足，请充值后重试。",
+                    status_code=status_code,
+                    code="insufficient_user_quota",
+                )
 
             # 根据状态码给出更详细的错误信息
             if status_code == 401:

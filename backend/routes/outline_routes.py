@@ -10,7 +10,7 @@ import base64
 import logging
 from flask import Blueprint, request, jsonify
 from backend.services.outline import get_outline_service
-from .utils import log_request, log_error
+from .utils import log_request, log_error, normalize_text_provider_failure
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,8 @@ def create_outline_blueprint():
                 return jsonify(result), 200
             else:
                 logger.error(f"❌ 大纲生成失败: {result.get('error', '未知错误')}")
-                return jsonify(result), 500
+                error_result, status_code = normalize_text_provider_failure(result)
+                return jsonify(error_result), status_code
 
         except Exception as e:
             log_error('/outline', e)

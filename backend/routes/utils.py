@@ -9,6 +9,21 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+TEXT_PROVIDER_ERROR_STATUSES = {
+    "insufficient_user_quota": 402,
+}
+
+
+def normalize_text_provider_failure(result: dict):
+    """Return a user-safe text-provider failure and its HTTP status."""
+    normalized = dict(result)
+    error_code = normalized.get("error_code")
+
+    if error_code == "insufficient_user_quota":
+        normalized["error"] = "TokensFactory 账户余额不足，请充值后重试。"
+
+    return normalized, TEXT_PROVIDER_ERROR_STATUSES.get(error_code, 500)
+
 
 def log_request(endpoint: str, data: dict = None):
     """
