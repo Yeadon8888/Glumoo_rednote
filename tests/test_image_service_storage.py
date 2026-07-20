@@ -83,8 +83,6 @@ def test_storage_cleanup_does_not_delete_tasks_when_index_is_invalid(tmp_path):
 
     assert freed == 0
     assert task_dir.exists()
-
-
 def test_cover_read_uses_its_own_task_directory(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     pages = [{"index": 0, "type": "cover", "content": "cover"}]
