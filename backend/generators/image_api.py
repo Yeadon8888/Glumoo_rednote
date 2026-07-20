@@ -12,6 +12,8 @@ from ..utils.image_compressor import compress_image
 
 logger = logging.getLogger(__name__)
 
+RETRYABLE_IMAGE_STATUS = {429, 500, 502, 503, 504, 524}
+
 
 class ImageApiGenerator(ImageGeneratorBase):
     """Image API 生成器"""
@@ -23,8 +25,10 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        self.output_size = config.get('output_size')
         self.quality = config.get('quality', 'low')
-        self.output_format = config.get('format', 'png')
+        self.response_format = config.get('response_format', 'url')
+        self.output_format = config.get('output_format', config.get('format', 'png'))
         self.edit_endpoint = config.get('edit_endpoint', '/v1/images/edits')
         self.create_retry_count = int(config.get('create_retry_count', 4))
         self.create_retry_base_delay = float(config.get('create_retry_base_delay', 12))
@@ -108,7 +112,14 @@ class ImageApiGenerator(ImageGeneratorBase):
             image_data = self._generate_via_images_api(
                 prompt, aspect_ratio, model, reference_image, reference_images
             )
-        return self._normalize_output_aspect_ratio(image_data, aspect_ratio)
+        output_size = (
+            self.output_size
+            if aspect_ratio == self.default_aspect_ratio
+            else None
+        )
+        return self._normalize_output_aspect_ratio(
+            image_data, aspect_ratio, output_size
+        )
 
     def _collect_reference_image_uris(
         self,
@@ -161,7 +172,8 @@ class ImageApiGenerator(ImageGeneratorBase):
                 "n": "1",
                 "size": size,
                 "quality": self.quality,
-                "format": self.output_format,
+                "response_format": self.response_format,
+                "output_format": self.output_format,
             }
             files = []
             for index, image in enumerate(all_reference_images):
@@ -186,7 +198,8 @@ class ImageApiGenerator(ImageGeneratorBase):
                 "n": 1,
                 "size": size,
                 "quality": self.quality,
-                "format": self.output_format,
+                "response_format": self.response_format,
+                "output_format": self.output_format,
             }
             json_headers = {**headers, "Content-Type": "application/json"}
             logger.info(f"Images Generations API: {api_url}, size={size}")
@@ -265,7 +278,7 @@ class ImageApiGenerator(ImageGeneratorBase):
         for attempt in range(self.create_retry_count + 1):
             response = requests.post(api_url, headers=headers, **request_kwargs)
             last_response = response
-            if response.status_code not in [429, 500, 502, 503, 504]:
+            if response.status_code not in RETRYABLE_IMAGE_STATUS:
                 return response
             if attempt >= self.create_retry_count:
                 return response
@@ -290,8 +303,13 @@ class ImageApiGenerator(ImageGeneratorBase):
             return self._download_image(url)
         return None
 
-    @staticmethod
-    def _generation_size(aspect_ratio: str) -> str:
+    def _generation_size(self, aspect_ratio: str) -> str:
+        if (
+            aspect_ratio == self.default_aspect_ratio
+            and isinstance(self.image_size, str)
+            and 'x' in self.image_size.lower()
+        ):
+            return self.image_size
         if aspect_ratio in {"1:1"}:
             return "1024x1024"
         if aspect_ratio in {"16:9", "3:2", "4:3", "5:4"}:
@@ -299,28 +317,50 @@ class ImageApiGenerator(ImageGeneratorBase):
         return "1024x1536"
 
     @staticmethod
-    def _normalize_output_aspect_ratio(image_data: bytes, aspect_ratio: str) -> bytes:
+    def _normalize_output_aspect_ratio(
+        image_data: bytes,
+        aspect_ratio: str,
+        output_size: Optional[str] = None,
+    ) -> bytes:
         try:
             width_text, height_text = aspect_ratio.split(':', 1)
             target_ratio = float(width_text) / float(height_text)
             with Image.open(io.BytesIO(image_data)) as image:
                 current_ratio = image.width / image.height
-                if abs(current_ratio - target_ratio) <= 0.005:
-                    return image_data
-                if current_ratio > target_ratio:
+                if current_ratio > target_ratio + 0.005:
                     crop_width = max(1, round(image.height * target_ratio))
                     left = max(0, (image.width - crop_width) // 2)
                     box = (left, 0, left + crop_width, image.height)
-                else:
+                    normalized = image.crop(box)
+                elif current_ratio < target_ratio - 0.005:
                     crop_height = max(1, round(image.width / target_ratio))
                     top = max(0, (image.height - crop_height) // 2)
                     box = (0, top, image.width, top + crop_height)
-                cropped = image.crop(box).convert("RGB")
+                    normalized = image.crop(box)
+                else:
+                    normalized = image.copy()
+
+                if output_size:
+                    output_width, output_height = (
+                        int(value)
+                        for value in output_size.lower().split('x', 1)
+                    )
+                    if output_width <= 0 or output_height <= 0:
+                        raise ValueError("输出尺寸必须为正数")
+                    if abs(output_width / output_height - target_ratio) > 0.005:
+                        raise ValueError("输出尺寸与目标比例不一致")
+                    if normalized.size != (output_width, output_height):
+                        normalized = normalized.resize(
+                            (output_width, output_height),
+                            Image.Resampling.LANCZOS,
+                        )
+
+                normalized = normalized.convert("RGB")
                 output = io.BytesIO()
-                cropped.save(output, format="PNG", optimize=True)
+                normalized.save(output, format="PNG", optimize=True)
                 logger.info(
                     f"图片比例已校正: {image.width}x{image.height} -> "
-                    f"{cropped.width}x{cropped.height} ({aspect_ratio})"
+                    f"{normalized.width}x{normalized.height} ({aspect_ratio})"
                 )
                 return output.getvalue()
         except (ValueError, ZeroDivisionError, OSError):
