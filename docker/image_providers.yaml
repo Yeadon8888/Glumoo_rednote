@@ -24,5 +24,7 @@ providers:
     output_format: png
     high_concurrency: true
     max_concurrent: 5
+    min_free_storage_mb: 96
+    orphan_grace_seconds: 600
     create_retry_count: 4
     create_retry_base_delay: 12

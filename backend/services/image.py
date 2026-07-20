@@ -1,10 +1,18 @@
 """图片生成服务"""
+import errno
+import json
 import logging
 import os
+import shutil
 import uuid
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    ThreadPoolExecutor,
+    as_completed,
+    wait,
+)
 from typing import Dict, Any, Generator, List, Optional, Tuple
 from backend.config import Config
 from backend.generators.factory import ImageGeneratorFactory
@@ -20,6 +28,8 @@ class ImageService:
     MAX_CONCURRENT = 15  # 最大并发数
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
     HEARTBEAT_INTERVAL = 20  # SSE 心跳间隔，避免长时间排队时连接被边缘节点断开
+    MIN_FREE_STORAGE_MB = 96
+    ORPHAN_GRACE_SECONDS = 600
 
     def __init__(self, provider_name: str = None):
         """
@@ -56,6 +66,20 @@ class ImageService:
             5,
             int(provider_config.get('heartbeat_interval', self.HEARTBEAT_INTERVAL))
         )
+        self.min_free_storage_bytes = max(
+            32,
+            int(provider_config.get(
+                'min_free_storage_mb',
+                os.getenv('HISTORY_MIN_FREE_MB', self.MIN_FREE_STORAGE_MB)
+            ))
+        ) * 1024 * 1024
+        self.orphan_grace_seconds = max(
+            0,
+            int(provider_config.get(
+                'orphan_grace_seconds',
+                os.getenv('HISTORY_ORPHAN_GRACE_SECONDS', self.ORPHAN_GRACE_SECONDS)
+            ))
+        )
 
         # 检查是否启用短 prompt 模式
         self.use_short_prompt = provider_config.get('short_prompt', False)
@@ -76,8 +100,112 @@ class ImageService:
 
         # 存储任务状态（用于重试）
         self._task_states: Dict[str, Dict] = {}
+        self._active_task_ids = set()
+        self._storage_lock = threading.Lock()
 
         logger.info(f"ImageService 初始化完成: provider={provider_name}, type={provider_type}")
+
+    def _get_free_storage_bytes(self) -> int:
+        """Return free bytes on the filesystem that stores generated images."""
+        return shutil.disk_usage(self.history_root_dir).free
+
+    def _load_referenced_task_ids(self) -> Optional[set]:
+        """Load task directories that are still referenced by history records."""
+        index_path = os.path.join(self.history_root_dir, "index.json")
+        try:
+            with open(index_path, "r", encoding="utf-8") as index_file:
+                records = json.load(index_file).get("records", [])
+        except (OSError, ValueError, TypeError):
+            logger.exception("读取历史索引失败，跳过孤立任务清理")
+            return None
+
+        return {
+            record.get("task_id")
+            for record in records
+            if record.get("task_id")
+        }
+
+    def _cleanup_orphan_task_dirs(self, required_free_bytes: int) -> int:
+        """Delete oldest unreferenced task directories until enough space is free."""
+        initial_free = self._get_free_storage_bytes()
+        referenced_task_ids = self._load_referenced_task_ids()
+        if referenced_task_ids is None:
+            return 0
+        protected_task_ids = referenced_task_ids | set(self._active_task_ids)
+        cutoff = time.time() - getattr(
+            self,
+            "orphan_grace_seconds",
+            self.ORPHAN_GRACE_SECONDS,
+        )
+        candidates = []
+
+        for name in os.listdir(self.history_root_dir):
+            path = os.path.join(self.history_root_dir, name)
+            if (
+                not name.startswith("task_")
+                or name in protected_task_ids
+                or not os.path.isdir(path)
+            ):
+                continue
+            try:
+                modified_at = os.path.getmtime(path)
+            except OSError:
+                continue
+            if modified_at <= cutoff:
+                candidates.append((modified_at, path))
+
+        for _, path in sorted(candidates):
+            if self._get_free_storage_bytes() >= required_free_bytes:
+                break
+            try:
+                shutil.rmtree(path)
+                logger.info("已清理孤立图片任务目录: %s", path)
+            except OSError:
+                logger.exception("清理孤立图片任务目录失败: %s", path)
+
+        return max(0, self._get_free_storage_bytes() - initial_free)
+
+    def _ensure_storage_available(self, task_id: str) -> None:
+        """Reclaim orphaned files and fail before calling a paid image API."""
+        required_free = getattr(
+            self,
+            "min_free_storage_bytes",
+            self.MIN_FREE_STORAGE_MB * 1024 * 1024,
+        )
+        with self._storage_lock:
+            free_before = self._get_free_storage_bytes()
+            if free_before < required_free:
+                freed = self._cleanup_orphan_task_dirs(required_free)
+                logger.warning(
+                    "图片存储空间不足，已自动清理孤立任务: task=%s, freed=%.1fMB",
+                    task_id,
+                    freed / 1024 / 1024,
+                )
+
+            free_after = self._get_free_storage_bytes()
+            if free_after < required_free:
+                raise OSError(
+                    errno.ENOSPC,
+                    "服务器图片存储空间不足，自动清理后仍无法生成。"
+                    "请联系管理员扩容或删除旧的历史记录。",
+                )
+
+    def _is_storage_error(self, error: Optional[str]) -> bool:
+        if not error:
+            return False
+        error_text = str(error).lower()
+        return (
+            "errno 28" in error_text
+            or "no space left on device" in error_text
+            or "存储空间不足" in str(error)
+            or "磁盘空间不足" in str(error)
+        )
+
+    def _storage_error_message(self) -> str:
+        return (
+            "服务器图片存储空间不足，本轮已停止生成，避免继续产生图片费用。"
+            "系统会自动清理无历史记录引用的旧任务，请稍后重试。"
+        )
 
     def _load_prompt_template(self, short: bool = False) -> str:
         """加载 Prompt 模板"""
@@ -111,17 +239,33 @@ class ImageService:
         if task_dir is None:
             raise ValueError("任务目录未设置")
 
-        # 保存原图
-        filepath = os.path.join(task_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(image_data)
+        def write_atomic(path: str, data: bytes) -> None:
+            temp_path = f"{path}.part-{uuid.uuid4().hex[:8]}"
+            try:
+                with open(temp_path, "wb") as output_file:
+                    output_file.write(data)
+                os.replace(temp_path, path)
+            finally:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        logger.warning("清理未完成图片文件失败: %s", temp_path)
 
-        # 生成缩略图（50KB左右）
-        thumbnail_data = compress_image(image_data, max_size_kb=50)
-        thumbnail_filename = f"thumb_{filename}"
-        thumbnail_path = os.path.join(task_dir, thumbnail_filename)
-        with open(thumbnail_path, "wb") as f:
-            f.write(thumbnail_data)
+        # 原子保存原图，失败时不会破坏用户正在重试的旧图片
+        filepath = os.path.join(task_dir, filename)
+        write_atomic(filepath, image_data)
+
+        # 缩略图不是生成成功的必要条件；空间突发不足时仍保留可用原图
+        try:
+            thumbnail_data = compress_image(image_data, max_size_kb=50)
+            thumbnail_filename = f"thumb_{filename}"
+            thumbnail_path = os.path.join(task_dir, thumbnail_filename)
+            write_atomic(thumbnail_path, thumbnail_data)
+        except OSError as error:
+            if not self._is_storage_error(str(error)):
+                raise
+            logger.warning("缩略图保存失败，回退使用原图: %s", error)
 
         return filepath
 
@@ -229,9 +373,11 @@ class ImageService:
                     quality=self.provider_config.get('quality', 'standard'),
                 )
 
-            # 保存图片（使用当前任务目录）
+            # 保存到 task_id 对应目录，避免多个批次同时生成时串目录
             filename = f"{index}.png"
-            self._save_image(image_data, filename, self.current_task_dir)
+            task_dir = os.path.join(self.history_root_dir, task_id)
+            os.makedirs(task_dir, exist_ok=True)
+            self._save_image(image_data, filename, task_dir)
             logger.info(f"✅ 图片 [{index}] 生成成功: {filename}")
 
             return (index, True, filename, None)
@@ -271,6 +417,38 @@ class ImageService:
             task_id = f"task_{uuid.uuid4().hex[:8]}"
 
         logger.info(f"开始图片生成任务: task_id={task_id}, pages={len(pages)}")
+
+        self._active_task_ids.add(task_id)
+        try:
+            self._ensure_storage_available(task_id)
+        except OSError as error:
+            self._active_task_ids.discard(task_id)
+            message = self._storage_error_message()
+            logger.error("图片生成任务存储预检失败: task=%s, error=%s", task_id, error)
+            for page in pages:
+                yield {
+                    "event": "error",
+                    "data": {
+                        "index": page["index"],
+                        "status": "error",
+                        "message": message,
+                        "retryable": True,
+                        "phase": "cover" if page.get("type") == "cover" else "content",
+                    },
+                }
+            yield {
+                "event": "finish",
+                "data": {
+                    "success": False,
+                    "task_id": task_id,
+                    "images": [],
+                    "total": len(pages),
+                    "completed": 0,
+                    "failed": len(pages),
+                    "failed_indices": [page["index"] for page in pages],
+                },
+            }
+            return
 
         # 创建任务专属目录
         self.current_task_dir = os.path.join(self.history_root_dir, task_id)
@@ -378,6 +556,9 @@ class ImageService:
                     }
                 }
             else:
+                storage_error = self._is_storage_error(error)
+                if storage_error:
+                    error = self._storage_error_message()
                 failed_pages.append(cover_page)
                 self._task_states[task_id]["failed"][index] = error
 
@@ -392,11 +573,14 @@ class ImageService:
                     }
                 }
 
-                if self._is_upstream_busy_error(error):
-                    skipped_message = (
-                        "图片服务上游繁忙，封面多次重试仍失败。本轮已暂停后续页面生成，"
-                        "请稍等 1-3 分钟后点击重试。"
-                    )
+                if self._is_upstream_busy_error(error) or storage_error:
+                    if storage_error:
+                        skipped_message = self._storage_error_message()
+                    else:
+                        skipped_message = (
+                            "图片服务上游繁忙，封面多次重试仍失败。本轮已暂停后续页面生成，"
+                            "请稍等 1-3 分钟后点击重试。"
+                        )
                     logger.warning(f"暂停后续图片生成: {skipped_message}")
                     for page in other_pages:
                         failed_pages.append(page)
@@ -615,6 +799,7 @@ class ImageService:
                 "failed_indices": [p["index"] for p in failed_pages]
             }
         }
+        self._active_task_ids.discard(task_id)
 
     def _is_upstream_busy_error(self, error: Optional[str]) -> bool:
         if not error:
@@ -648,6 +833,17 @@ class ImageService:
         Returns:
             生成结果
         """
+        try:
+            self._ensure_storage_available(task_id)
+        except OSError as error:
+            logger.error("单图重试存储预检失败: task=%s, error=%s", task_id, error)
+            return {
+                "success": False,
+                "index": page.get("index"),
+                "error": self._storage_error_message(),
+                "retryable": True,
+            }
+
         self.current_task_dir = os.path.join(self.history_root_dir, task_id)
         os.makedirs(self.current_task_dir, exist_ok=True)
 
@@ -738,6 +934,32 @@ class ImageService:
             }
         }
 
+        try:
+            self._ensure_storage_available(task_id)
+        except OSError as error:
+            message = self._storage_error_message()
+            logger.error("批量重试存储预检失败: task=%s, error=%s", task_id, error)
+            for page in pages:
+                yield {
+                    "event": "error",
+                    "data": {
+                        "index": page["index"],
+                        "status": "error",
+                        "message": message,
+                        "retryable": True,
+                    },
+                }
+            yield {
+                "event": "retry_finish",
+                "data": {
+                    "success": False,
+                    "total": total,
+                    "completed": 0,
+                    "failed": total,
+                },
+            }
+            return
+
         # 并发重试
         # 从任务状态中获取完整大纲和其他参数
         task_state = self._task_states.get(task_id, {})
@@ -747,7 +969,7 @@ class ImageService:
         layout_mimic_mode = task_state.get("layout_mimic_mode", False)
         platform = task_state.get("platform", "xiaohongshu")
 
-        with ThreadPoolExecutor(max_workers=self.MAX_CONCURRENT) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_concurrent) as executor:
             future_to_page = {
                 executor.submit(
                     self._generate_single_image,
