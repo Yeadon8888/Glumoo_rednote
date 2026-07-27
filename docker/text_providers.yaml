@@ -2,12 +2,22 @@
 #
 # 部署说明：
 # 1. 本地 Docker: 挂载包含 API Key 的 text_providers.yaml 文件
-# 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
+# 2. Railway 等云平台: 设置环境变量 CPA_API_KEY
 # 3. Web 界面: 在"系统设置"页面配置 API Key
 #
-active_provider: tokensfactory
+active_provider: cpa
 
 providers:
+  # CPA OpenAI-compatible multimodal text API
+  cpa:
+    type: openai_compatible
+    api_key_env: CPA_API_KEY
+    base_url: https://cliproxyapi-production-2dde.up.railway.app/v1
+    endpoint_type: /v1/chat/completions
+    model: gpt-5.4-mini
+    temperature: 0.7
+    max_output_tokens: 8000
+
   # TokensFactory OpenAI-compatible text API
   tokensfactory:
     type: openai_compatible

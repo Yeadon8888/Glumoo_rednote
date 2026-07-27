@@ -17,8 +17,12 @@ class ProviderAPIError(Exception):
         self.code = code
 
 
-def retry_on_429(max_retries=3, base_delay=2):
-    """429 错误自动重试装饰器"""
+class RetryableTextAPIError(Exception):
+    """A temporary upstream failure that can be retried safely."""
+
+
+def retry_on_transient_error(max_retries=3, base_delay=2):
+    """Retry temporary provider and network failures with exponential backoff."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -26,22 +30,19 @@ def retry_on_429(max_retries=3, base_delay=2):
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    error_str = str(e)
-                    if "429" in error_str or "rate" in error_str.lower():
-                        if attempt < max_retries - 1:
-                            wait_time = (base_delay ** attempt) + random.uniform(0, 1)
-                            print(f"[重试] 遇到限流，{wait_time:.1f}秒后重试 (尝试 {attempt + 2}/{max_retries})")
-                            time.sleep(wait_time)
-                            continue
+                    retryable = isinstance(
+                        e,
+                        (RetryableTextAPIError, requests.exceptions.RequestException),
+                    )
+                    if retryable and attempt < max_retries - 1:
+                        wait_time = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
+                        print(
+                            f"[重试] 文本服务暂时不可用，{wait_time:.1f}秒后重试 "
+                            f"(尝试 {attempt + 2}/{max_retries})"
+                        )
+                        time.sleep(wait_time)
+                        continue
                     raise
-            raise Exception(
-                f"Text API 重试 {max_retries} 次后仍失败。\n"
-                "可能原因：\n"
-                "1. API持续限流或配额不足\n"
-                "2. 网络连接持续不稳定\n"
-                "3. API服务暂时不可用\n"
-                "建议：稍后再试，或联系API服务提供商"
-            )
         return wrapper
     return decorator
 
@@ -108,7 +109,7 @@ class TextChatClient:
 
         return content
 
-    @retry_on_429(max_retries=3, base_delay=2)
+    @retry_on_transient_error(max_retries=3, base_delay=2)
     def generate_text(
         self,
         prompt: str,
@@ -232,7 +233,7 @@ class TextChatClient:
                     f"\n【请求地址】{self.chat_endpoint}"
                 )
             elif status_code == 429:
-                raise Exception(
+                raise RetryableTextAPIError(
                     "⏳ API 配额或速率限制\n\n"
                     "【说明】\n"
                     "请求频率过高或配额已用尽。\n\n"
@@ -242,7 +243,7 @@ class TextChatClient:
                     "3. 考虑升级计划获取更多配额"
                 )
             elif status_code >= 500:
-                raise Exception(
+                raise RetryableTextAPIError(
                     f"⚠️ API 服务器错误 ({status_code})\n\n"
                     "【说明】\n"
                     "这是服务端的临时故障，与您的配置无关。\n\n"

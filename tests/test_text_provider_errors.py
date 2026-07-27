@@ -3,6 +3,16 @@
 import pytest
 
 
+class _TextResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = str(payload)
+
+    def json(self):
+        return self._payload
+
+
 class _FailedTextService:
     def generate_outline(self, *args, **kwargs):
         return {
@@ -45,6 +55,36 @@ def test_text_client_preserves_provider_quota_code(monkeypatch):
 
     assert caught.value.status_code == 403
     assert caught.value.code == "insufficient_user_quota"
+
+
+def test_text_client_retries_temporary_503(monkeypatch):
+    from backend.utils.text_client import TextChatClient
+
+    responses = iter([
+        _TextResponse(
+            503,
+            {"error": {"message": "upstream temporarily unavailable"}},
+        ),
+        _TextResponse(
+            200,
+            {"choices": [{"message": {"content": "大纲生成成功"}}]},
+        ),
+    ])
+    calls = []
+
+    def fake_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
+    monkeypatch.setattr("backend.utils.text_client.requests.post", fake_post)
+    monkeypatch.setattr("backend.utils.text_client.time.sleep", lambda _: None)
+    client = TextChatClient(api_key="test-key", base_url="https://example.com/v1")
+
+    result = client.generate_text(prompt="测试", model="gemini-3.5-flash")
+
+    assert result == "大纲生成成功"
+    assert len(calls) == 2
+
 
 def test_outline_quota_failure_returns_payment_required(client, monkeypatch):
     monkeypatch.setattr(
