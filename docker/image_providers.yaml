@@ -5,9 +5,30 @@
 # 2. Railway 等云平台: 设置环境变量 GOOGLE_API_KEY 或 GEMINI_API_KEY
 # 3. Web 界面: 在"系统设置"页面配置 API Key
 #
-active_provider: tokensfactory_gpt_image
+active_provider: cpa_gpt_image
 
 providers:
+  # Internal CPA synchronous GPT Image 2 API
+  cpa_gpt_image:
+    type: image_api
+    api_key_env: CPA_IMAGE_API_KEY
+    base_url: https://cliproxyapi-production-2dde.up.railway.app/v1
+    endpoint_type: /v1/images/generations
+    edit_endpoint: /v1/images/edits
+    model: gpt-image-2
+    default_aspect_ratio: "3:4"
+    image_size: 1024x1536
+    output_size: 1536x2048
+    quality: low
+    response_format: b64_json
+    output_format: png
+    high_concurrency: true
+    max_concurrent: 5
+    min_free_storage_mb: 96
+    orphan_grace_seconds: 600
+    create_retry_count: 4
+    create_retry_base_delay: 12
+
   # TokensFactory synchronous GPT Image 2 series API
   tokensfactory_gpt_image:
     type: image_api
