@@ -28,7 +28,7 @@ class ImageService:
     MAX_CONCURRENT = 15  # 最大并发数
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
     HEARTBEAT_INTERVAL = 20  # SSE 心跳间隔，避免长时间排队时连接被边缘节点断开
-    MIN_FREE_STORAGE_MB = 64
+    MIN_FREE_STORAGE_MB = 96
     ORPHAN_GRACE_SECONDS = 600
 
     def __init__(self, provider_name: str = None):
