@@ -19,6 +19,7 @@ def test_cpa_is_the_active_deployment_image_provider():
     assert provider["edit_endpoint"] == "/v1/images/edits"
     assert provider["response_format"] == "b64_json"
     assert provider["max_concurrent"] == 5
+    assert provider["min_free_storage_mb"] == 64
     assert provider["output_size"] == "1536x2048"
 
 

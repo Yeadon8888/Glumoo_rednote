@@ -28,7 +28,7 @@ class ImageService:
     MAX_CONCURRENT = 15  # 最大并发数
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
     HEARTBEAT_INTERVAL = 20  # SSE 心跳间隔，避免长时间排队时连接被边缘节点断开
-    MIN_FREE_STORAGE_MB = 96
+    MIN_FREE_STORAGE_MB = 64
     ORPHAN_GRACE_SECONDS = 600
 
     def __init__(self, provider_name: str = None):
@@ -174,10 +174,17 @@ class ImageService:
         )
         with self._storage_lock:
             free_before = self._get_free_storage_bytes()
+            logger.info(
+                "图片存储预检: task=%s, free=%.2fMB, required=%.2fMB",
+                task_id,
+                free_before / 1024 / 1024,
+                required_free / 1024 / 1024,
+            )
             if free_before < required_free:
                 freed = self._cleanup_orphan_task_dirs(required_free)
                 logger.warning(
-                    "图片存储空间不足，已自动清理孤立任务: task=%s, freed=%.1fMB",
+                    "图片存储空间不足，已自动清理孤立任务: "
+                    "task=%s, freed=%.2fMB",
                     task_id,
                     freed / 1024 / 1024,
                 )
