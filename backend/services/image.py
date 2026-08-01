@@ -450,10 +450,11 @@ class ImageService:
             }
             return
 
-        # 创建任务专属目录
-        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
-        os.makedirs(self.current_task_dir, exist_ok=True)
-        logger.debug(f"任务目录: {self.current_task_dir}")
+        # Keep the directory request-local because this service is shared by
+        # concurrent SSE requests.
+        task_dir = os.path.join(self.history_root_dir, task_id)
+        os.makedirs(task_dir, exist_ok=True)
+        logger.debug(f"任务目录: {task_dir}")
 
         total = len(pages)
         generated_images = []
@@ -534,16 +535,23 @@ class ImageService:
                 index, success, filename, error = cover_future.result()
 
             if success:
+                cover_path = os.path.join(task_dir, filename)
+                try:
+                    with open(cover_path, "rb") as f:
+                        cover_image_data = f.read()
+                    cover_image_data = compress_image(cover_image_data, max_size_kb=200)
+                except OSError as read_error:
+                    success = False
+                    error = f"封面文件读取失败: {read_error}"
+                    logger.exception(
+                        "封面生成后读取失败: task=%s, path=%s",
+                        task_id,
+                        cover_path,
+                    )
+
+            if success:
                 generated_images.append(filename)
                 self._task_states[task_id]["generated"][index] = filename
-
-                # 读取封面图片作为参考，并立即压缩到200KB以内
-                cover_path = os.path.join(self.current_task_dir, filename)
-                with open(cover_path, "rb") as f:
-                    cover_image_data = f.read()
-
-                # 压缩封面图（减少内存占用和后续传输开销）
-                cover_image_data = compress_image(cover_image_data, max_size_kb=200)
                 self._task_states[task_id]["cover_image"] = cover_image_data
 
                 yield {
@@ -844,8 +852,8 @@ class ImageService:
                 "retryable": True,
             }
 
-        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
-        os.makedirs(self.current_task_dir, exist_ok=True)
+        task_dir = os.path.join(self.history_root_dir, task_id)
+        os.makedirs(task_dir, exist_ok=True)
 
         reference_image = None
         user_images = None
@@ -864,7 +872,7 @@ class ImageService:
 
         # 如果任务状态中没有封面图，尝试从文件系统加载
         if use_reference and reference_image is None:
-            cover_path = os.path.join(self.current_task_dir, "0.png")
+            cover_path = os.path.join(task_dir, "0.png")
             if os.path.exists(cover_path):
                 with open(cover_path, "rb") as f:
                     cover_data = f.read()

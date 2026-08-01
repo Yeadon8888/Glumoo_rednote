@@ -83,3 +83,32 @@ def test_storage_cleanup_does_not_delete_tasks_when_index_is_invalid(tmp_path):
 
     assert freed == 0
     assert task_dir.exists()
+
+
+def test_cover_read_uses_its_own_task_directory(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    pages = [{"index": 0, "type": "cover", "content": "cover"}]
+
+    monkeypatch.setattr(service, "_ensure_storage_available", lambda task_id: None)
+    monkeypatch.setattr(
+        "backend.services.image.compress_image",
+        lambda image_data, max_size_kb: image_data,
+    )
+
+    def fake_generate(page, task_id, *args, **kwargs):
+        task_dir = tmp_path / task_id
+        task_dir.mkdir(exist_ok=True)
+        (task_dir / "0.png").write_bytes(b"cover-image")
+
+        # Simulate another request starting while this cover request is in flight.
+        service.current_task_dir = str(tmp_path / "task_other")
+        (tmp_path / "task_other").mkdir(exist_ok=True)
+        return page["index"], True, "0.png", None
+
+    monkeypatch.setattr(service, "_generate_single_image", fake_generate)
+
+    events = list(service.generate_images(pages, task_id="task_main"))
+
+    assert any(event["event"] == "complete" for event in events)
+    finish = next(event["data"] for event in events if event["event"] == "finish")
+    assert finish["success"] is True
