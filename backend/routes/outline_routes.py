@@ -15,6 +15,7 @@ from .utils import (
     log_request,
     log_error,
     normalize_error_result,
+    normalize_text_provider_failure,
     validation_error,
 )
 
@@ -48,9 +49,9 @@ def create_outline_blueprint():
 
         try:
             # 解析请求数据
-            topic, images = _parse_outline_request()
+            topic, images, platform, style_id = _parse_outline_request()
 
-            log_request('/outline', {'topic': topic, 'images': images})
+            log_request('/outline', {'topic': topic, 'images': images, 'platform': platform})
 
             # 验证必填参数
             if not topic:
@@ -63,7 +64,9 @@ def create_outline_blueprint():
             # 调用大纲生成服务
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
             outline_service = get_outline_service()
-            result = outline_service.generate_outline(topic, images if images else None)
+            result = outline_service.generate_outline(
+                topic, images if images else None, platform, style_id
+            )
 
             # 记录结果
             elapsed = time.time() - start_time
@@ -72,6 +75,12 @@ def create_outline_blueprint():
                 return jsonify(result), 200
             else:
                 logger.error(f"❌ 大纲生成失败: {result.get('error', '未知错误')}")
+                if result.get("error_code") in {
+                    "insufficient_user_quota",
+                    "quota_exceeded",
+                }:
+                    result, status = normalize_text_provider_failure(result)
+                    return jsonify(result), status
                 result = normalize_error_result(
                     result,
                     context={"endpoint": "/api/outline"},
@@ -95,11 +104,13 @@ def _parse_outline_request():
     2. application/json - 用于 base64 图片
 
     返回：
-        tuple: (topic, images) - 主题和图片列表
+        tuple: (topic, images, platform) - 主题、图片列表和平台
     """
     # 检查是否是 multipart/form-data（带图片文件）
     if request.content_type and 'multipart/form-data' in request.content_type:
         topic = request.form.get('topic')
+        platform = request.form.get('platform', 'xiaohongshu')
+        style_id = request.form.get('style_id', 'general')
         images = []
 
         # 获取上传的图片文件
@@ -110,11 +121,13 @@ def _parse_outline_request():
                     image_data = file.read()
                     images.append(image_data)
 
-        return topic, images
+        return topic, images, platform, style_id
 
     # JSON 请求（无图片或 base64 图片）
     data = request.get_json()
     topic = data.get('topic')
+    platform = data.get('platform', 'xiaohongshu')
+    style_id = data.get('style_id', 'general')
     images = []
 
     # 支持 base64 格式的图片
@@ -126,4 +139,4 @@ def _parse_outline_request():
                 img_b64 = img_b64.split(',')[1]
             images.append(base64.b64decode(img_b64))
 
-    return topic, images
+    return topic, images, platform, style_id

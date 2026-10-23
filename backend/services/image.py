@@ -122,6 +122,18 @@ class ImageService:
         """Return free bytes on the filesystem that stores generated images."""
         return shutil.disk_usage(self.history_root_dir).free
 
+    def _get_task_dir(self, task_id: str) -> str:
+        """Resolve a task directory without relying on shared mutable request state."""
+        history_root = getattr(self, "history_root_dir", None)
+        if history_root:
+            return os.path.join(history_root, task_id)
+
+        current_task_dir = getattr(self, "current_task_dir", None)
+        if current_task_dir:
+            return current_task_dir
+
+        raise ValueError("任务目录未设置")
+
     def _load_referenced_task_ids(self) -> Optional[set]:
         """Load task directories that are still referenced by history records."""
         index_path = os.path.join(self.history_root_dir, "index.json")
@@ -144,7 +156,9 @@ class ImageService:
         referenced_task_ids = self._load_referenced_task_ids()
         if referenced_task_ids is None:
             return 0
-        protected_task_ids = referenced_task_ids | set(self._active_task_ids)
+        protected_task_ids = referenced_task_ids | set(
+            getattr(self, "_active_task_ids", set())
+        )
         cutoff = time.time() - getattr(
             self,
             "orphan_grace_seconds",
@@ -185,7 +199,12 @@ class ImageService:
             "min_free_storage_bytes",
             self.MIN_FREE_STORAGE_MB * 1024 * 1024,
         )
-        with self._storage_lock:
+        storage_lock = getattr(self, "_storage_lock", None)
+        if storage_lock is None:
+            storage_lock = threading.Lock()
+            self._storage_lock = storage_lock
+
+        with storage_lock:
             free_before = self._get_free_storage_bytes()
             if free_before < required_free:
                 freed = self._cleanup_orphan_task_dirs(required_free)
@@ -219,6 +238,20 @@ class ImageService:
             "服务器图片存储空间不足，本轮已停止生成，避免继续产生图片费用。"
             "系统会自动清理无历史记录引用的旧任务，请稍后重试。"
         )
+
+    @staticmethod
+    def _is_upstream_busy_error(error: Optional[str]) -> bool:
+        if not error:
+            return False
+        error_text = str(error).lower()
+        return any(marker in error_text for marker in (
+            "429",
+            "rate limit",
+            "resource_exhausted",
+            "too many requests",
+            "限流",
+            "上游繁忙",
+        ))
 
     def _load_prompt_template(self, short: bool = False) -> str:
         """加载 Prompt 模板"""
@@ -292,7 +325,10 @@ class ImageService:
         user_images: Optional[List[bytes]] = None,
         user_topic: str = "",
         record_id: Optional[str] = None,
-        total_count: Optional[int] = None
+        total_count: Optional[int] = None,
+        layout_mimic_mode: bool = False,
+        platform: str = "xiaohongshu",
+        style_id: str = "general",
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """
         生成单张图片（带自动重试）
@@ -333,16 +369,27 @@ class ImageService:
                     user_topic=user_topic if user_topic else "未提供"
                 )
 
+            from backend.style_profiles import get_style_instruction
+            style_instruction = get_style_instruction(style_id)
+            if style_instruction:
+                prompt += f"\n\n本次视觉风格要求：\n{style_instruction}"
+
+            aspect_ratio = (
+                "4:5" if platform == "instagram"
+                else self.provider_config.get('default_aspect_ratio', '3:4')
+            )
+
             # 调用生成器生成图片。所有路径共用 limiter，避免批量和重试打爆上游。
             with self.rate_limiter.acquire():
                 if self.provider_config.get('type') == 'google_genai':
                     logger.debug(f"  使用 Google GenAI 生成器")
                     image_data = self.generator.generate_image(
                         prompt=prompt,
-                        aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                        aspect_ratio=aspect_ratio,
                         temperature=self.provider_config.get('temperature', 1.0),
                         model=self.provider_config.get('model', 'gemini-3-pro-image-preview'),
                         reference_image=reference_image,
+                        layout_mimic_mode=layout_mimic_mode,
                     )
                 elif self.provider_config.get('type') == 'image_api':
                     logger.debug(f"  使用 Image API 生成器")
@@ -356,7 +403,7 @@ class ImageService:
 
                     image_data = self.generator.generate_image(
                         prompt=prompt,
-                        aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                        aspect_ratio=aspect_ratio,
                         temperature=self.provider_config.get('temperature', 1.0),
                         model=self.provider_config.get('model', 'nano-banana-2'),
                         reference_images=reference_images if reference_images else None,
@@ -372,7 +419,7 @@ class ImageService:
 
             # 保存到 task_id 对应目录，避免多个批次同时生成时串目录
             filename = f"{index}.png"
-            task_dir = os.path.join(self.history_root_dir, task_id)
+            task_dir = self._get_task_dir(task_id)
             os.makedirs(task_dir, exist_ok=True)
             self._save_image(image_data, filename, task_dir)
             logger.info(f"✅ 图片 [{index}] 生成成功: {filename}")
@@ -401,7 +448,10 @@ class ImageService:
         user_images: Optional[List[bytes]] = None,
         user_topic: str = "",
         record_id: Optional[str] = None,
-        force: bool = False
+        force: bool = False,
+        layout_mimic_mode: bool = False,
+        platform: str = "xiaohongshu",
+        style_id: str = "general",
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -433,11 +483,15 @@ class ImageService:
 
         logger.info(f"开始图片生成任务: task_id={task_id}, pages={len(pages)}")
 
-        self._active_task_ids.add(task_id)
+        active_task_ids = getattr(self, "_active_task_ids", None)
+        if active_task_ids is None:
+            active_task_ids = set()
+            self._active_task_ids = active_task_ids
+        active_task_ids.add(task_id)
         try:
             self._ensure_storage_available(task_id)
         except OSError as error:
-            self._active_task_ids.discard(task_id)
+            active_task_ids.discard(task_id)
             message = self._storage_error_message()
             logger.error("图片生成任务存储预检失败: task=%s, error=%s", task_id, error)
             for page in pages:
@@ -466,9 +520,9 @@ class ImageService:
             return
 
         # 创建任务专属目录
-        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
-        os.makedirs(self.current_task_dir, exist_ok=True)
-        logger.debug(f"任务目录: {self.current_task_dir}")
+        task_dir = self._get_task_dir(task_id)
+        os.makedirs(task_dir, exist_ok=True)
+        logger.debug(f"任务目录: {task_dir}")
 
         total = len(pages)
         generated_images = [""] * total
@@ -488,7 +542,10 @@ class ImageService:
             "cover_image": None,
             "full_outline": full_outline,
             "user_images": compressed_user_images,
-            "user_topic": user_topic
+            "user_topic": user_topic,
+            "layout_mimic_mode": layout_mimic_mode,
+            "platform": platform,
+            "style_id": style_id,
         }
 
         # ==================== 第一阶段：生成封面 ====================
@@ -524,7 +581,9 @@ class ImageService:
             index, success, filename, error = self._generate_single_image(
                 cover_page, task_id, reference_image=None, full_outline=full_outline,
                 user_images=compressed_user_images, user_topic=user_topic,
-                record_id=record_id, total_count=total
+                record_id=record_id, total_count=total,
+                layout_mimic_mode=layout_mimic_mode, platform=platform,
+                style_id=style_id
             )
 
             if success:
@@ -532,7 +591,7 @@ class ImageService:
                 self._task_states[task_id]["generated"][index] = filename
 
                 # 读取封面图片作为参考，并立即压缩到200KB以内
-                cover_path = os.path.join(self.current_task_dir, filename)
+                cover_path = os.path.join(task_dir, filename)
                 with open(cover_path, "rb") as f:
                     cover_image_data = f.read()
 
@@ -621,7 +680,10 @@ class ImageService:
                             compressed_user_images,  # 用户上传的参考图片（已压缩）
                             user_topic,  # 用户原始输入
                             record_id,
-                            total
+                            total,
+                            layout_mimic_mode,
+                            platform,
+                            style_id,
                         ): page
                         for page in other_pages
                     }
@@ -724,7 +786,10 @@ class ImageService:
                         compressed_user_images,
                         user_topic,
                         record_id,
-                        total
+                        total,
+                        layout_mimic_mode,
+                        platform,
+                        style_id,
                     )
 
                     if success:
@@ -768,7 +833,7 @@ class ImageService:
                 "failed_indices": [p["index"] for p in failed_pages]
             }
         }
-        self._active_task_ids.discard(task_id)
+        active_task_ids.discard(task_id)
 
     def get_cached_generation_events(self, record_id: str, pages: list) -> List[Dict[str, Any]]:
         record = self.history_service.get_record(record_id, sync_images=True)
@@ -863,8 +928,8 @@ class ImageService:
                 "retryable": True,
             }
 
-        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
-        os.makedirs(self.current_task_dir, exist_ok=True)
+        task_dir = self._get_task_dir(task_id)
+        os.makedirs(task_dir, exist_ok=True)
 
         reference_image = None
         user_images = None
@@ -883,7 +948,7 @@ class ImageService:
 
         # 如果任务状态中没有封面图，尝试从文件系统加载
         if use_reference and reference_image is None:
-            cover_path = os.path.join(self.current_task_dir, "0.png")
+            cover_path = os.path.join(task_dir, "0.png")
             if os.path.exists(cover_path):
                 with open(cover_path, "rb") as f:
                     cover_data = f.read()
@@ -891,8 +956,15 @@ class ImageService:
                 reference_image = compress_image(cover_data, max_size_kb=200)
 
         total_count = None
+        layout_mimic_mode = False
+        platform = "xiaohongshu"
+        style_id = "general"
         if task_id in self._task_states:
-            total_count = len(self._task_states[task_id].get("pages", []))
+            task_state = self._task_states[task_id]
+            total_count = len(task_state.get("pages", []))
+            layout_mimic_mode = task_state.get("layout_mimic_mode", False)
+            platform = task_state.get("platform", "xiaohongshu")
+            style_id = task_state.get("style_id", "general")
 
         index, success, filename, error = self._generate_single_image(
             page,
@@ -903,7 +975,10 @@ class ImageService:
             user_images,
             user_topic,
             record_id,
-            total_count
+            total_count,
+            layout_mimic_mode,
+            platform,
+            style_id,
         )
 
         if success:
@@ -941,21 +1016,27 @@ class ImageService:
         Yields:
             进度事件
         """
-        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
-        os.makedirs(self.current_task_dir, exist_ok=True)
+        task_dir = self._get_task_dir(task_id)
+        os.makedirs(task_dir, exist_ok=True)
 
         # 获取参考图和上下文
         reference_image = None
         user_images = None
         user_topic = ""
+        layout_mimic_mode = False
+        platform = "xiaohongshu"
+        style_id = "general"
         if task_id in self._task_states:
             task_state = self._task_states[task_id]
             reference_image = task_state.get("cover_image")
             user_images = task_state.get("user_images")
             user_topic = task_state.get("user_topic", "")
+            layout_mimic_mode = task_state.get("layout_mimic_mode", False)
+            platform = task_state.get("platform", "xiaohongshu")
+            style_id = task_state.get("style_id", "general")
 
         if reference_image is None:
-            cover_path = os.path.join(self.history_root_dir, task_id, "0.png")
+            cover_path = os.path.join(task_dir, "0.png")
             if os.path.exists(cover_path):
                 with open(cover_path, "rb") as f:
                     reference_image = compress_image(f.read(), max_size_kb=200)
@@ -1036,6 +1117,7 @@ class ImageService:
                     "status": "error",
                     "message": error,
                     "retryable": True
+                }
             }
 
         if self.worker_count > 1:
@@ -1051,7 +1133,10 @@ class ImageService:
                         user_images,
                         user_topic,
                         record_id,
-                        total_count
+                        total_count,
+                        layout_mimic_mode,
+                        platform,
+                        style_id,
                     ): page
                     for page in pages
                 }
@@ -1082,7 +1167,10 @@ class ImageService:
                     user_images,
                     user_topic,
                     record_id,
-                    total_count
+                    total_count,
+                    layout_mimic_mode,
+                    platform,
+                    style_id,
                 )
                 yield handle_result(page, result)
 

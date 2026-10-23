@@ -40,6 +40,31 @@
       </div>
     </div>
 
+    <div class="asset-library">
+      <div class="asset-library-bar">
+        <button type="button" class="asset-button" @click="toggleAssetLibrary" :disabled="loading">
+          品牌素材库 <span v-if="brandAssets.length">{{ brandAssets.length }}</span>
+        </button>
+        <label class="asset-button">
+          上传并收藏
+          <input type="file" accept="image/*" multiple hidden @change="handleBrandAssetUpload" />
+        </label>
+      </div>
+      <div v-if="showAssetLibrary" class="asset-grid">
+        <button
+          v-for="asset in brandAssets"
+          :key="asset.filename"
+          type="button"
+          class="asset-card"
+          @click="useBrandAsset(asset)"
+        >
+          <img :src="asset.url" alt="品牌素材" />
+          <span>点击引用</span>
+        </button>
+        <span v-if="brandAssets.length === 0" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
+      </div>
+    </div>
+
     <!-- 一键二创选项 -->
     <div v-if="uploadedImages.length > 0" class="layout-mimic-option">
       <label class="checkbox-label">
@@ -55,6 +80,26 @@
           <span class="option-desc">严格模仿参考图的布局结构，只替换文字内容（推荐用于小红书爆款图片）</span>
         </span>
       </label>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="style-section">
+      <div class="style-heading">选择内容风格</div>
+      <div class="style-grid">
+        <button
+          v-for="style in contentStyles"
+          :key="style.id"
+          type="button"
+          class="style-card"
+          :class="{ active: store.contentStyle === style.id }"
+          :disabled="loading"
+          @click="store.setContentStyle(style.id)"
+        >
+          <span class="style-name">{{ style.name }}</span>
+          <span v-if="style.badge" class="style-badge">{{ style.badge }}</span>
+          <span class="style-description">{{ style.description }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- 工具栏 -->
@@ -109,6 +154,13 @@
 
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
+import { contentStyles } from '../../contentStyles'
+import {
+  brandAssetToFile,
+  listBrandAssets,
+  uploadBrandAssets,
+  type BrandAsset
+} from '../../api/brandAssets'
 
 /**
  * 主题输入组合框组件
@@ -145,6 +197,8 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 已上传的图片
 const uploadedImages = ref<UploadedImage[]>([])
+const brandAssets = ref<BrandAsset[]>([])
+const showAssetLibrary = ref(false)
 
 // 一键二创模式
 const layoutMimicMode = ref(false)
@@ -229,6 +283,30 @@ function emitImagesChange() {
   emit('imagesChange', files)
 }
 
+async function toggleAssetLibrary() {
+  showAssetLibrary.value = !showAssetLibrary.value
+  if (showAssetLibrary.value) {
+    brandAssets.value = await listBrandAssets()
+  }
+}
+
+async function handleBrandAssetUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const files = Array.from(target.files || []).slice(0, 8)
+  if (files.length === 0) return
+  await uploadBrandAssets(files)
+  brandAssets.value = await listBrandAssets()
+  showAssetLibrary.value = true
+  target.value = ''
+}
+
+async function useBrandAsset(asset: BrandAsset) {
+  if (uploadedImages.value.length >= 8) return
+  const file = await brandAssetToFile(asset)
+  uploadedImages.value.push({ file, preview: URL.createObjectURL(file) })
+  emitImagesChange()
+}
+
 /**
  * 处理一键二创模式变化
  */
@@ -271,6 +349,109 @@ defineExpose({
   padding: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.style-section {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.asset-library {
+  margin-top: 12px;
+}
+
+.asset-library-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.asset-button {
+  padding: 7px 11px;
+  border: 1px solid #e5e5ea;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text-sub);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f7f7f8;
+}
+
+.asset-card {
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.asset-card:hover { border-color: var(--primary); }
+.asset-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.asset-card span { display: block; padding: 5px; font-size: 10px; }
+.empty-assets { grid-column: 1 / -1; padding: 12px; color: var(--text-sub); font-size: 12px; }
+
+.style-heading {
+  margin-bottom: 8px;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.style-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.style-card {
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid #ececf0;
+  border-radius: 12px;
+  background: #fafafa;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+}
+
+.style-card.active {
+  border-color: var(--primary);
+  background: rgba(255, 36, 66, 0.06);
+  box-shadow: 0 0 0 1px rgba(255, 36, 66, 0.12);
+}
+
+.style-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.style-badge {
+  float: right;
+  color: var(--primary);
+  font-size: 10px;
+}
+
+.style-description {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-sub);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .style-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* 输入区域 */

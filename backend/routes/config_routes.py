@@ -308,8 +308,8 @@ def _load_provider_config(provider_type: str, provider_name: str, config: dict) 
                     config['base_url'] = saved.get('base_url')
                 if not config['model']:
                     config['model'] = saved.get('model')
-                if not config.get('endpoint_type'):
-                    config['endpoint_type'] = saved.get('endpoint_type')
+                if not config.get('endpoint_type') and saved.get('endpoint_type'):
+                    config['endpoint_type'] = saved['endpoint_type']
 
     return config
 

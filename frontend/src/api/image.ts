@@ -10,6 +10,7 @@ import type {
   ProgressEvent
 } from './types'
 import type { AppError } from '../utils/errors'
+import type { ContentStyleId } from '../contentStyles'
 
 export function getImageUrl(taskId: string, filename: string, thumbnail: boolean = true): string {
   const thumbParam = thumbnail ? '?thumbnail=true' : '?thumbnail=false'
@@ -87,7 +88,10 @@ export async function generateImagesPost(
   userImages?: File[],
   userTopic?: string,
   recordId?: string | null,
-  force: boolean = false
+  force: boolean = false,
+  layoutMimicMode: boolean = false,
+  platform: 'xiaohongshu' | 'instagram' = 'xiaohongshu',
+  styleId: ContentStyleId = 'general'
 ) {
   try {
     const userImagesBase64 = userImages && userImages.length > 0
@@ -106,7 +110,10 @@ export async function generateImagesPost(
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
         user_topic: userTopic || '',
         record_id: recordId || undefined,
-        force
+        force,
+        layout_mimic_mode: layoutMimicMode,
+        platform,
+        style_id: styleId
       })
     })
 

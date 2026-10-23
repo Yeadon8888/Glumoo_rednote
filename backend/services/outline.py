@@ -154,7 +154,8 @@ class OutlineService:
         self,
         topic: str,
         images: Optional[List[bytes]] = None,
-        platform: str = 'xiaohongshu'
+        platform: str = 'xiaohongshu',
+        style_id: str = 'general',
     ) -> Dict[str, Any]:
         try:
             logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, platform={platform}")
@@ -170,6 +171,10 @@ class OutlineService:
                 user_images_context = "用户没有提供参考图片。"
 
             prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
+            from backend.style_profiles import get_style_instruction
+            style_instruction = get_style_instruction(style_id)
+            if style_instruction:
+                prompt += f"\n\n本次内容风格要求：\n{style_instruction}"
 
             # 从配置中获取模型参数
             active_provider = self.text_config.get('active_provider', 'google_gemini')

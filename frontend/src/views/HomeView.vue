@@ -117,7 +117,8 @@ async function handleGenerate() {
     const result = await generateOutline(
       topic.value.trim(),
       imageFiles.length > 0 ? imageFiles : undefined,
-      store.platform  // 传递平台风格参数
+      store.platform,
+      store.contentStyle
     )
 
     if (result.success && result.pages) {

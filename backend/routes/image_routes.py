@@ -13,6 +13,9 @@ import os
 import json
 import base64
 import logging
+import shutil
+import uuid
+from pathlib import Path
 from flask import Blueprint, request, jsonify, Response, send_file
 from backend.errors import ensure_app_error
 from backend.services.image import get_image_service
@@ -59,6 +62,9 @@ def create_image_blueprint():
             force = bool(data.get('force', False))
             full_outline = data.get('full_outline', '')
             user_topic = data.get('user_topic', '')
+            layout_mimic_mode = bool(data.get('layout_mimic_mode', False))
+            platform = data.get('platform', 'xiaohongshu')
+            style_id = data.get('style_id', 'general')
 
             # 解析 base64 格式的用户参考图片
             user_images = _parse_base64_images(data.get('user_images', []))
@@ -69,7 +75,9 @@ def create_image_blueprint():
                 'record_id': record_id,
                 'force': force,
                 'user_topic': user_topic[:50] if user_topic else None,
-                'user_images': user_images
+                'user_images': user_images,
+                'layout_mimic_mode': layout_mimic_mode,
+                'platform': platform,
             })
 
             if not pages:
@@ -89,7 +97,10 @@ def create_image_blueprint():
                     user_images=user_images if user_images else None,
                     user_topic=user_topic,
                     record_id=record_id,
-                    force=force
+                    force=force,
+                    layout_mimic_mode=layout_mimic_mode,
+                    platform=platform,
+                    style_id=style_id,
                 ):
                     event_type = event["event"]
                     event_data = _normalize_sse_error(
@@ -406,6 +417,49 @@ def create_image_blueprint():
 
     # ==================== 健康检查 ====================
 
+    @image_bp.route('/brand-assets', methods=['GET', 'POST'])
+    def brand_assets():
+        """持久化品牌参考图，供多次创作复用。"""
+        asset_dir = _brand_asset_dir()
+        if request.method == 'POST':
+            files = request.files.getlist('images')
+            if not files:
+                return api_error_response(
+                    validation_error("images 不能为空", "请选择要保存的品牌素材。"),
+                    context={"endpoint": "/api/brand-assets"},
+                )
+
+            saved = []
+            for upload in files[:8]:
+                suffix = Path(upload.filename or "").suffix.lower()
+                if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    suffix = ".png"
+                filename = f"asset_{uuid.uuid4().hex[:12]}{suffix}"
+                upload.save(asset_dir / filename)
+                saved.append(_brand_asset_payload(asset_dir / filename))
+            return jsonify({"success": True, "assets": saved}), 201
+
+        assets = [
+            _brand_asset_payload(path)
+            for path in sorted(asset_dir.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True)
+            if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        ]
+        return jsonify({"success": True, "assets": assets}), 200
+
+    @image_bp.route('/brand-assets/<filename>', methods=['GET', 'DELETE'])
+    def brand_asset_file(filename: str):
+        asset_dir = _brand_asset_dir()
+        safe_name = os.path.basename(filename)
+        asset_path = asset_dir / safe_name
+        if safe_name != filename or not asset_path.is_file():
+            return api_error_response("Brand asset not found", status=404)
+        if request.method == 'DELETE':
+            asset_path.unlink()
+            return jsonify({"success": True}), 200
+        return send_file(asset_path)
+
+    # ==================== 健康检查 ====================
+
     @image_bp.route('/health', methods=['GET'])
     def health_check():
         """
@@ -415,15 +469,56 @@ def create_image_blueprint():
         - success: 服务是否正常
         - message: 状态消息
         """
+        history_root = os.getenv(
+            "HISTORY_DIR",
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "history"),
+        )
+        try:
+            os.makedirs(history_root, exist_ok=True)
+            storage = shutil.disk_usage(history_root)
+            storage_writable = os.access(history_root, os.W_OK)
+        except OSError as error:
+            logger.error("健康检查无法访问历史目录: %s", error)
+            return jsonify({
+                "success": False,
+                "status": "unhealthy",
+                "checks": {"storage": "unavailable"},
+            }), 503
+
+        status = "healthy" if storage_writable else "unhealthy"
         return jsonify({
-            "success": True,
-            "message": "服务正常运行"
-        }), 200
+            "success": storage_writable,
+            "status": status,
+            "version": "1.4.3-glumoo",
+            "checks": {
+                "api": "ok",
+                "storage": "ok" if storage_writable else "read_only",
+                "storage_free_mb": round(storage.free / 1024 / 1024),
+            },
+        }), 200 if storage_writable else 503
 
     return image_bp
 
 
 # ==================== 辅助函数 ====================
+
+def _brand_asset_dir() -> Path:
+    history_root = Path(os.getenv(
+        "HISTORY_DIR",
+        Path(__file__).resolve().parents[2] / "history",
+    ))
+    asset_dir = history_root / "brand_assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    return asset_dir
+
+
+def _brand_asset_payload(path: Path) -> dict:
+    return {
+        "filename": path.name,
+        "url": f"/api/brand-assets/{path.name}",
+        "size": path.stat().st_size,
+        "updated_at": path.stat().st_mtime,
+    }
 
 def _parse_base64_images(images_base64: list) -> list:
     """

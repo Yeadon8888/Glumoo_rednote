@@ -155,7 +155,8 @@ class ContentService:
         self,
         topic: str,
         outline: str,
-        platform: str = 'xiaohongshu'
+        platform: str = 'xiaohongshu',
+        style_id: str = 'general',
     ) -> Dict[str, Any]:
         """
         生成标题、文案和标签
@@ -182,6 +183,10 @@ class ContentService:
                 topic=topic,
                 outline=outline
             )
+            from backend.style_profiles import get_style_instruction
+            style_instruction = get_style_instruction(style_id)
+            if style_instruction:
+                prompt += f"\n\n本次内容风格要求：\n{style_instruction}"
 
             logger.debug(f"  构建的 Prompt 长度: {len(prompt)} 字符")
             logger.debug(f"  Prompt 前500字: {prompt[:500]}...")

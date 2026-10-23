@@ -14,6 +14,7 @@ from .utils import (
     log_request,
     log_error,
     normalize_error_result,
+    normalize_text_provider_failure,
     validation_error,
 )
 
@@ -45,8 +46,14 @@ def create_content_blueprint():
             data = request.get_json()
             topic = data.get('topic', '')
             outline = data.get('outline', '')
+            platform = data.get('platform', 'xiaohongshu')
+            style_id = data.get('style_id', 'general')
 
-            log_request('/content', {'topic': topic[:50] if topic else '', 'outline_length': len(outline)})
+            log_request('/content', {
+                'topic': topic[:50] if topic else '',
+                'outline_length': len(outline),
+                'platform': platform,
+            })
 
             # 验证必填参数
             if not topic:
@@ -66,7 +73,7 @@ def create_content_blueprint():
             # 调用内容生成服务
             logger.info(f"🔄 开始生成内容，主题: {topic[:50]}...")
             content_service = get_content_service()
-            result = content_service.generate_content(topic, outline)
+            result = content_service.generate_content(topic, outline, platform, style_id)
 
             # 记录结果
             elapsed = time.time() - start_time
@@ -75,6 +82,12 @@ def create_content_blueprint():
                 return jsonify(result), 200
             else:
                 logger.error(f"❌ 内容生成失败: {result.get('error', '未知错误')}")
+                if result.get("error_code") in {
+                    "insufficient_user_quota",
+                    "quota_exceeded",
+                }:
+                    result, status = normalize_text_provider_failure(result)
+                    return jsonify(result), status
                 result = normalize_error_result(
                     result,
                     context={"endpoint": "/api/content"},

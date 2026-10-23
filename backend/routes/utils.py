@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 TEXT_PROVIDER_ERROR_STATUSES = {
     "insufficient_user_quota": 402,
+    "quota_exceeded": 402,
 }
 
 
@@ -23,7 +24,7 @@ def normalize_text_provider_failure(result: dict):
     normalized = dict(result)
     error_code = normalized.get("error_code")
 
-    if error_code == "insufficient_user_quota":
+    if error_code in {"insufficient_user_quota", "quota_exceeded"}:
         normalized["error"] = "TokensFactory 账户余额不足，请充值后重试。"
 
     return normalized, TEXT_PROVIDER_ERROR_STATUSES.get(error_code, 500)
@@ -107,12 +108,15 @@ def normalize_error_result(result: dict, context: dict = None, fallback_status: 
         return result
 
     error = result.get("error") or result.get("error_message") or "操作失败"
+    legacy_status = TEXT_PROVIDER_ERROR_STATUSES.get(result.get("error_code"))
     if isinstance(error, dict) and error.get("code"):
         error_obj = error
         error_message = result.get("error_message") or f"{error_obj.get('title', '操作失败')}：{error_obj.get('suggestion') or error_obj.get('detail', '')}"
     else:
         app_error = ensure_app_error(error, context=context)
-        if app_error.status == 500 and fallback_status != 500:
+        if legacy_status is not None:
+            app_error.status = legacy_status
+        elif app_error.status == 500 and fallback_status != 500:
             app_error.status = fallback_status
         error_obj = app_error.to_dict()
         error_message = app_error.to_message()

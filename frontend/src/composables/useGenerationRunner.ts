@@ -68,7 +68,11 @@ export function useGenerationRunner(
       },
       store.userImages.length > 0 ? store.userImages : undefined,
       store.topic,
-      store.recordId
+      store.recordId,
+      false,
+      store.layoutMimicMode,
+      store.platform,
+      store.contentStyle
     )
   }
 

@@ -14,6 +14,7 @@
  * 4. result: 查看生成结果
  */
 import { defineStore } from 'pinia'
+import type { ContentStyleId } from '../contentStyles'
 import type { Page } from '../api'
 
 /**
@@ -47,6 +48,9 @@ export interface GeneratorState {
 
   // 平台风格：xiaohongshu-小红书, instagram-Instagram
   platform: 'xiaohongshu' | 'instagram'
+
+  // 产品化内容风格/宠物垂类模板
+  contentStyle: ContentStyleId
 
   // 大纲数据（包含原始文本和解析后的页面列表）
   outline: {
@@ -109,6 +113,7 @@ function saveState(state: GeneratorState) {
       stage: state.stage,                    // 当前阶段
       topic: state.topic,                    // 用户输入的主题
       platform: state.platform,              // 平台风格
+      contentStyle: state.contentStyle,      // 内容风格
       outline: state.outline,                // 大纲数据
       progress: state.progress,              // 生成进度
       images: state.images,                  // 生成的图片结果
@@ -137,6 +142,8 @@ export const useGeneratorStore = defineStore('generator', {
 
       // 平台风格（默认小红书）
       platform: saved.platform || 'xiaohongshu',
+
+      contentStyle: saved.contentStyle || 'general',
 
       // 大纲数据
       outline: saved.outline || {
@@ -197,6 +204,11 @@ export const useGeneratorStore = defineStore('generator', {
      */
     setPlatform(platform: 'xiaohongshu' | 'instagram') {
       this.platform = platform
+      saveState(this)
+    },
+
+    setContentStyle(style: ContentStyleId) {
+      this.contentStyle = style
       saveState(this)
     },
 

@@ -179,7 +179,12 @@ async function handleGenerate() {
   store.startContentGeneration()
 
   try {
-    const result = await generateContent(store.topic, store.outline.raw)
+    const result = await generateContent(
+      store.topic,
+      store.outline.raw,
+      store.platform,
+      store.contentStyle
+    )
 
     if (result.success && result.titles && result.copywriting && result.tags) {
       store.setContent(result.titles, result.copywriting, result.tags)
