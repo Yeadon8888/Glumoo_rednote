@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from backend.config import Config
+from backend.auth import register_site_auth
 from backend.routes import register_routes
 
 
@@ -60,9 +61,12 @@ def create_app():
         r"/api/*": {
             "origins": Config.CORS_ORIGINS,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type"],
+            "allow_headers": ["Content-Type", "Authorization"],
         }
     })
+
+    # 可选的全站密码保护，凭据仅从部署环境变量读取。
+    register_site_auth(app)
 
     # 注册所有 API 路由
     register_routes(app)
