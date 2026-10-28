@@ -108,6 +108,14 @@ function handlePlatformChange(platform: string) {
 async function handleGenerate() {
   if (!topic.value.trim()) return
 
+  if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length !== 6) {
+    error.value = normalizeApiError(
+      'Glumoo SOP 每次必须上传恰好 6 张当次输入图；当前为 ' + uploadedImageFiles.value.length + ' 张。请在这 6 张中包含需要锁定的产品素材。',
+      '参考图数量不符合 SOP'
+    )
+    return
+  }
+
   loading.value = true
   error.value = null
 

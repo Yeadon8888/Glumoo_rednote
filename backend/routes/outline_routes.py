@@ -61,6 +61,16 @@ def create_outline_blueprint():
                     context={"endpoint": "/api/outline"},
                 )
 
+            from backend.style_profiles import is_glumoo_style
+            if is_glumoo_style(style_id) and len(images) != 6:
+                return api_error_response(
+                    validation_error(
+                        "Glumoo SOP 需要恰好 6 张当次主参考图",
+                        f"当前收到 {len(images)} 张。请重新选择 6 张独立参考图后再生成。"
+                    ),
+                    context={"endpoint": "/api/outline"},
+                )
+
             # 调用大纲生成服务
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
             outline_service = get_outline_service()

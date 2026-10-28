@@ -403,7 +403,12 @@ class ImageService:
                     # 组合参考图片：用户上传的图片 + 封面图
                     reference_images = []
                     if user_images:
-                        reference_images.extend(user_images)
+                        from backend.style_profiles import is_glumoo_style
+                        if is_glumoo_style(style_id) and page_type != "cover":
+                            # Glumoo clean-input rule: one bound main reference per body page.
+                            reference_images.append(user_images[index % len(user_images)])
+                        else:
+                            reference_images.extend(user_images)
                     if reference_image:
                         reference_images.append(reference_image)
 
@@ -553,6 +558,107 @@ class ImageService:
             "platform": platform,
             "style_id": style_id,
         }
+
+        from backend.style_profiles import is_glumoo_style
+        if is_glumoo_style(style_id):
+            body_pages = [page for page in pages if page.get("type") != "cover"]
+            cover_pages = [page for page in pages if page.get("type") == "cover"]
+            # Current SOP: six body images first; the accepted proof image then becomes
+            # the sole visual source for the derived cover.
+            if len(body_pages) != 6 or len(cover_pages) != 1:
+                message = "Glumoo 大纲必须包含 6 张正文和 1 张末位封面，请重新生成大纲。"
+                for page in pages:
+                    failed_pages.append(page)
+                    self._task_states[task_id]["failed"][page["index"]] = message
+                    yield {"event": "error", "data": {
+                        "index": page["index"], "status": "error", "message": message,
+                        "retryable": False, "phase": "cover" if page.get("type") == "cover" else "content",
+                    }}
+                yield {"event": "finish", "data": {
+                    "success": False, "task_id": task_id, "images": generated_images,
+                    "total": total, "completed": 0, "failed": len(pages),
+                    "failed_indices": [page["index"] for page in pages],
+                }}
+                active_task_ids.discard(task_id)
+                return
+
+            proof_image_data = None
+            for position, page in enumerate(body_pages):
+                yield {"event": "progress", "data": {
+                    "index": page["index"], "status": "generating",
+                    "message": "正在生成最高风险证明图..." if position == 0 else "正在生成正文...",
+                    "current": position + 1, "total": total, "phase": "content",
+                }}
+                index, success, filename, error = self._generate_single_image(
+                    page, task_id, reference_image=None, full_outline=full_outline,
+                    user_images=compressed_user_images, user_topic=user_topic,
+                    record_id=record_id, total_count=total,
+                    layout_mimic_mode=layout_mimic_mode, platform=platform, style_id=style_id,
+                )
+                if not success:
+                    failed_pages.append(page)
+                    self._task_states[task_id]["failed"][index] = error
+                    yield {"event": "error", "data": {
+                        "index": index, "status": "error", "message": error,
+                        "retryable": True, "phase": "content",
+                    }}
+                    continue
+                self._remember_generated(generated_images, index, filename, total)
+                self._task_states[task_id]["generated"][index] = filename
+                if position == 0:
+                    with open(os.path.join(task_dir, filename), "rb") as proof_file:
+                        proof_image_data = compress_image(proof_file.read(), max_size_kb=200)
+                    self._task_states[task_id]["cover_image"] = proof_image_data
+                yield {"event": "complete", "data": {
+                    "index": index, "status": "done",
+                    "image_url": f"/api/images/{task_id}/{filename}", "phase": "content",
+                }}
+
+            cover_page = cover_pages[0]
+            if failed_pages or proof_image_data is None:
+                message = "正文尚未全部通过，按 Glumoo SOP 暂不派生封面；请先重试失败正文。"
+                failed_pages.append(cover_page)
+                self._task_states[task_id]["failed"][cover_page["index"]] = message
+                yield {"event": "error", "data": {
+                    "index": cover_page["index"], "status": "error", "message": message,
+                    "retryable": True, "phase": "cover",
+                }}
+            else:
+                yield {"event": "progress", "data": {
+                    "index": cover_page["index"], "status": "generating",
+                    "message": "六张正文已完成，正在从证明图派生封面...",
+                    "current": 7, "total": total, "phase": "cover",
+                }}
+                index, success, filename, error = self._generate_single_image(
+                    cover_page, task_id, reference_image=proof_image_data,
+                    full_outline=full_outline, user_images=None, user_topic=user_topic,
+                    record_id=record_id, total_count=total,
+                    layout_mimic_mode=True, platform=platform, style_id=style_id,
+                )
+                if success:
+                    self._remember_generated(generated_images, index, filename, total)
+                    self._task_states[task_id]["generated"][index] = filename
+                    yield {"event": "complete", "data": {
+                        "index": index, "status": "done",
+                        "image_url": f"/api/images/{task_id}/{filename}", "phase": "cover",
+                    }}
+                else:
+                    failed_pages.append(cover_page)
+                    self._task_states[task_id]["failed"][index] = error
+                    yield {"event": "error", "data": {
+                        "index": index, "status": "error", "message": error,
+                        "retryable": True, "phase": "cover",
+                    }}
+
+            yield {"event": "finish", "data": {
+                "success": len(failed_pages) == 0, "task_id": task_id,
+                "images": generated_images, "total": total,
+                "completed": self._count_generated(generated_images),
+                "failed": len(failed_pages),
+                "failed_indices": [page["index"] for page in failed_pages],
+            }}
+            active_task_ids.discard(task_id)
+            return
 
         # ==================== 第一阶段：生成封面 ====================
         cover_page = None

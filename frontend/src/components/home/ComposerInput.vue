@@ -100,6 +100,9 @@
           <span class="style-description">{{ style.description }}</span>
         </button>
       </div>
+      <div v-if="store.contentStyle.startsWith('glumoo')" class="glumoo-sop-hint">
+        本次需上传恰好 6 张输入图，并包含需要锁定的产品素材。系统逐页只绑定其中 1 张主参考。
+      </div>
     </div>
 
     <!-- 工具栏 -->
