@@ -171,8 +171,8 @@ class OutlineService:
                 user_images_context = "用户没有提供参考图片。"
 
             prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
-            from backend.style_profiles import get_style_instruction
-            style_instruction = get_style_instruction(style_id)
+            from backend.style_profiles import get_outline_style_instruction
+            style_instruction = get_outline_style_instruction(style_id)
             if style_instruction:
                 prompt += f"\n\n本次内容风格要求：\n{style_instruction}"
 

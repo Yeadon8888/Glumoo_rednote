@@ -369,8 +369,13 @@ class ImageService:
                     user_topic=user_topic if user_topic else "未提供"
                 )
 
-            from backend.style_profiles import get_style_instruction
-            style_instruction = get_style_instruction(style_id)
+            from backend.style_profiles import get_image_style_instruction
+            style_instruction = get_image_style_instruction(
+                style_id,
+                page_type=page_type,
+                page_index=index,
+                total_count=total_count,
+            )
             if style_instruction:
                 prompt += f"\n\n本次视觉风格要求：\n{style_instruction}"
 

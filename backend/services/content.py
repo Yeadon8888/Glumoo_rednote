@@ -183,8 +183,8 @@ class ContentService:
                 topic=topic,
                 outline=outline
             )
-            from backend.style_profiles import get_style_instruction
-            style_instruction = get_style_instruction(style_id)
+            from backend.style_profiles import get_content_style_instruction
+            style_instruction = get_content_style_instruction(style_id)
             if style_instruction:
                 prompt += f"\n\n本次内容风格要求：\n{style_instruction}"
 
