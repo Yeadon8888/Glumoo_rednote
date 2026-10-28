@@ -375,6 +375,7 @@ class ImageService:
                 page_type=page_type,
                 page_index=index,
                 total_count=total_count,
+                topic=user_topic,
             )
             if style_instruction:
                 prompt += f"\n\n本次视觉风格要求：\n{style_instruction}"

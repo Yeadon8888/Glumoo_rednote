@@ -1,5 +1,6 @@
 """Product-level content styles shared by outline, copy, and image generation."""
 
+import hashlib
 from typing import Optional
 
 
@@ -80,6 +81,67 @@ GLUMOO_PAGE_DIRECTIONS = (
 )
 
 
+# Distilled from a 117-image Pinterest scan plus the user's Railway campaign
+# history. These are composition briefs, not copied images or copyrighted assets.
+GLUMOO_REFERENCE_ARCHETYPES = {
+    "dopamine": (
+        "钴蓝墙面 + 番茄红几何门洞；人物蹲坐拥抱犬只，圆罐产品落在红色矮台前景。",
+        "橙黄宠物帐篷 + 蓝粉抽象墙；主人用量勺准备食物，宠物在中景期待，产品正面朝镜头。",
+        "蓝色沙发 + 红黄地毯 + 条纹织物；主人梳毛，产品位于低矮蓝色边桌，形成三角构图。",
+        "粉色墙面 + 蓝色猫爬架；猫狗并排看向画外，产品系列沿前景石材台面整齐陈列。",
+        "彩色餐厨场景；主人弯身照顾宠物，黄色食盆与蓝色包装形成冷暖对比，动作自然。",
+        "红色画框式背景；主人从后方拥抱两只宠物，两款产品在蓝色圆台上形成群像锚点。",
+        "蓝橙色块背景 + 柔软地毯；犬只向镜头跑近，产品稳定落在侧前景，使用轻微运动凝固。",
+        "高饱和客厅全家福；一猫一犬居中，产品系列在前景等高排布，毛绒玩具只做少量点缀。",
+    ),
+    "natural": (
+        "大窗边侧逆光；主人读书或整理植物，猫在窗台，产品落在不同高度的木凳前景。",
+        "温暖木地板客厅；主人给犬只梳毛，散落少量毛发保留真实感，产品在背景凳上清晰可见。",
+        "晨光厨房；主人打开低柜取用产品，宠物从画面下方靠近，利用柜门形成天然画框。",
+        "城市公园长椅；主人抚摸犬只，牵引绳形成引导线，产品放在长椅一侧且比例合理。",
+        "山湖露营餐桌；主人准备宠物餐，犬只在身侧，产品与杯具落在木桌上，远山形成纵深。",
+        "岩石观景点；猫或犬佩戴户外胸背，产品放在稳固岩面，背景山湖轻微虚化。",
+        "帐篷入口第一视角；犬只侧脸迎着日光，产品落在蓝色户外箱上，前景有人腿增强在场感。",
+        "斑驳日光的安静室内；猫在猫爬架上，产品分别位于原木矮凳，深阴影与暖高光并存。",
+    ),
+}
+
+
+def _glumoo_visual_route(topic: str) -> str:
+    normalized = (topic or "").lower()
+    natural_markers = (
+        "户外", "露营", "森林", "山", "湖", "公园", "散步", "自然",
+        "窗边", "晨光", "居家", "安静", "outdoor", "camping", "nature",
+    )
+    dopamine_markers = (
+        "多巴胺", "彩色", "活力", "快乐", "新品", "系列", "全家福",
+        "colorful", "dopamine", "campaign", "launch",
+    )
+    if any(marker in normalized for marker in natural_markers):
+        return "natural"
+    if any(marker in normalized for marker in dopamine_markers):
+        return "dopamine"
+    # Railway's recent approved campaign uses the colorful route most often.
+    return "dopamine"
+
+
+def get_glumoo_reference_calibration(topic: str, count: int = 6) -> str:
+    """Return a deterministic six-reference preflight matrix for one suite."""
+    route = _glumoo_visual_route(topic)
+    candidates = GLUMOO_REFERENCE_ARCHETYPES[route]
+    digest = hashlib.sha256((topic or "glumoo-default").encode("utf-8")).digest()
+    start = int.from_bytes(digest[:2], "big") % len(candidates)
+    selected = [candidates[(start + offset) % len(candidates)] for offset in range(count)]
+    route_name = "多巴胺家居商业摄影" if route == "dopamine" else "自然窗光/户外生活方式摄影"
+    rows = "\n".join(f"参考锚点 {index + 1}：{brief}" for index, brief in enumerate(selected))
+    return (
+        f"本套唯一视觉路线：{route_name}。以下 6 个锚点来自 100+ 张 Pinterest 同类图与 "
+        f"Railway 历史成片的归纳，只学习构图规律，不复制具体作品：\n{rows}\n"
+        "开拍前先用这 6 个锚点校准人物、宠物、产品、光线、色彩与景深；第一张图作为最高风险证明图，"
+        "产品身份和整体视觉通过后，其余页面沿用同一人物/宠物/产品和美术路线。"
+    )
+
+
 def get_style_instruction(style_id: str) -> str:
     """Backward-compatible generic style lookup."""
     if style_id == "glumoo":
@@ -87,9 +149,12 @@ def get_style_instruction(style_id: str) -> str:
     return STYLE_PROFILES.get(style_id, STYLE_PROFILES["general"]).strip()
 
 
-def get_outline_style_instruction(style_id: str) -> str:
+def get_outline_style_instruction(style_id: str, topic: str = "") -> str:
     if style_id == "glumoo":
-        return GLUMOO_OUTLINE_INSTRUCTION.strip()
+        return (
+            f"{GLUMOO_OUTLINE_INSTRUCTION.strip()}\n\n"
+            f"【制作前六参考校准】\n{get_glumoo_reference_calibration(topic)}"
+        )
     return get_style_instruction(style_id)
 
 
@@ -104,6 +169,7 @@ def get_image_style_instruction(
     page_type: str = "content",
     page_index: int = 0,
     total_count: Optional[int] = None,
+    topic: str = "",
 ) -> str:
     if style_id != "glumoo":
         return get_style_instruction(style_id)
@@ -119,6 +185,7 @@ def get_image_style_instruction(
 
     return (
         f"{GLUMOO_VISUAL_BASE.strip()}\n\n"
+        f"【制作前六参考校准】\n{get_glumoo_reference_calibration(topic)}\n\n"
         f"【本页专属导演指令】\n{direction}\n\n"
         "生成前请内部检查：产品身份是否与参考图一致、人物与宠物互动是否自然、是否完全没有后加文字和信息卡、"
         "是否与上一页更换了镜头、是否像同一品牌摄影企划。只输出最终图片。"

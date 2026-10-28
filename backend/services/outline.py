@@ -172,7 +172,7 @@ class OutlineService:
 
             prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
             from backend.style_profiles import get_outline_style_instruction
-            style_instruction = get_outline_style_instruction(style_id)
+            style_instruction = get_outline_style_instruction(style_id, topic=topic)
             if style_instruction:
                 prompt += f"\n\n本次内容风格要求：\n{style_instruction}"
 
