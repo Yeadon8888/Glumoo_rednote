@@ -35,7 +35,7 @@ GLUMOO_OUTLINE_INSTRUCTION = """
 - 画面意图：这一页要传达的一个核心信息，但该信息不直接印在图片上。
 - 场景与动作：具体到家中/户外位置、人物与宠物动作、产品如何自然入镜。
 - 镜头：从环境中景、低机位跟拍、动作特写、俯拍静物、产品近景中选择；连续两页不得相同。
-- 美术方向：在“多巴胺家居广告摄影”或“自然窗光/户外生活方式摄影”中选择，并写明背景色、道具和光线。
+- 美术方向：先从本次六参考矩阵动态归纳共同的色彩、材质、光线和空间语言，再写明本页背景、道具和光线；不得套用预设风格名称。
 
 三、内容逻辑：真实问题 → 观察判断 → 可执行方法 → 产品自然出现 → 适用边界 → 克制总结。不要写成硬广、诊断书或功能参数清单。产品名、包装文字和品牌信息只使用参考图中能确认的内容，不能编造。
 """
@@ -54,9 +54,7 @@ GLUMOO_VISUAL_BASE = """
 【最高优先级：Glumoo Pinterest 宠物生活编辑视觉】
 这不是图文信息卡，也不是带标题的海报。成片应像 Railway 历史记录里的 Glumoo 品牌摄影：一组会被收藏到 Pinterest 的商业级宠物生活方式照片。图片上不叠加标题、说明、便签、编号、图标或装饰文字；唯一允许出现的文字是参考产品包装自身真实存在的印刷文字。
 
-视觉有两条可选路线，同一套只能选一条并保持一致：
-1. 多巴胺家居：高饱和但高级的钴蓝、番茄红、橙、粉、黄撞色；几何背景、彩色边桌、地毯、宠物帐篷和现代家居道具；明亮柔和的商业广告光。人和宠物亲密互动，神态快乐，画面充满能量但不杂乱。
-2. 自然生活：真实住宅窗边、厨房、木地板、城市公园、露营或山湖户外；自然窗光、斑驳阳光或金色日光，木材、棉麻、植物和户外装备；更安静、有呼吸感，像高端生活方式杂志。
+不要预设“多巴胺、自然、商业、户外”等固定分类。每个任务都必须先读取本次六参考矩阵，动态归纳它们真正共同的色彩、材质、光线、空间、人物关系和产品位置；若参考之间存在冲突，以用户主题、产品参考图和多数参考的共同特征为准，形成一套可执行的临时视觉规则，并在七页中保持一致。
 
 产品可以靠近前景形成清晰视觉锚点，但必须真正落在桌面、木桩、岩石、长凳或地面上；人宠互动仍是故事主体。曝光通透、毛发细节真实、肤色自然、广告摄影级清晰度和景深。
 
@@ -64,7 +62,7 @@ GLUMOO_VISUAL_BASE = """
 
 产品身份锁定：参考图中的包装形状、长宽比例、主色、Logo、品名、标签布局、封口/瓶盖和合理尺寸必须保持一致；禁止改字、换色、重画 Logo、凭空增加包装或让产品悬浮。若文字无法可靠复现，宁可减少包装小字，也不能伪造。
 
-整套连续性：宠物品种与外观、人物身份、住宅/户外气质、产品包装和色彩路线保持一致；但每页必须更换景别、机位或动作，不能把同一构图复制七次。
+整套连续性：宠物品种与外观、人物身份、空间气质、产品包装和动态归纳出的视觉规则保持一致；但每页必须更换景别、机位或动作，不能把同一构图复制七次。
 
 明确禁止：任何后加标题或说明文字、便签贴纸、信息卡、拼贴、纯白棚拍、产品悬浮、廉价霓虹色、塑料 3D 渲染、卡通宠物、错误肢体、对称海报模板、错误 Logo 和错误包装比例。画面中不得出现小红书 Logo、用户 ID 或水印。
 """
@@ -83,8 +81,7 @@ GLUMOO_PAGE_DIRECTIONS = (
 
 # Distilled from a 117-image Pinterest scan plus the user's Railway campaign
 # history. These are composition briefs, not copied images or copyrighted assets.
-GLUMOO_REFERENCE_ARCHETYPES = {
-    "dopamine": (
+GLUMOO_REFERENCE_ARCHETYPES = (
         "钴蓝墙面 + 番茄红几何门洞；人物蹲坐拥抱犬只，圆罐产品落在红色矮台前景。",
         "橙黄宠物帐篷 + 蓝粉抽象墙；主人用量勺准备食物，宠物在中景期待，产品正面朝镜头。",
         "蓝色沙发 + 红黄地毯 + 条纹织物；主人梳毛，产品位于低矮蓝色边桌，形成三角构图。",
@@ -93,8 +90,6 @@ GLUMOO_REFERENCE_ARCHETYPES = {
         "红色画框式背景；主人从后方拥抱两只宠物，两款产品在蓝色圆台上形成群像锚点。",
         "蓝橙色块背景 + 柔软地毯；犬只向镜头跑近，产品稳定落在侧前景，使用轻微运动凝固。",
         "高饱和客厅全家福；一猫一犬居中，产品系列在前景等高排布，毛绒玩具只做少量点缀。",
-    ),
-    "natural": (
         "大窗边侧逆光；主人读书或整理植物，猫在窗台，产品落在不同高度的木凳前景。",
         "温暖木地板客厅；主人给犬只梳毛，散落少量毛发保留真实感，产品在背景凳上清晰可见。",
         "晨光厨房；主人打开低柜取用产品，宠物从画面下方靠近，利用柜门形成天然画框。",
@@ -103,41 +98,39 @@ GLUMOO_REFERENCE_ARCHETYPES = {
         "岩石观景点；猫或犬佩戴户外胸背，产品放在稳固岩面，背景山湖轻微虚化。",
         "帐篷入口第一视角；犬只侧脸迎着日光，产品落在蓝色户外箱上，前景有人腿增强在场感。",
         "斑驳日光的安静室内；猫在猫爬架上，产品分别位于原木矮凳，深阴影与暖高光并存。",
-    ),
-}
+)
 
 
-def _glumoo_visual_route(topic: str) -> str:
-    normalized = (topic or "").lower()
-    natural_markers = (
-        "户外", "露营", "森林", "山", "湖", "公园", "散步", "自然",
-        "窗边", "晨光", "居家", "安静", "outdoor", "camping", "nature",
-    )
-    dopamine_markers = (
-        "多巴胺", "彩色", "活力", "快乐", "新品", "系列", "全家福",
-        "colorful", "dopamine", "campaign", "launch",
-    )
-    if any(marker in normalized for marker in natural_markers):
-        return "natural"
-    if any(marker in normalized for marker in dopamine_markers):
-        return "dopamine"
-    # Railway's recent approved campaign uses the colorful route most often.
-    return "dopamine"
+# Twelve reusable six-reference sets. They deliberately have no style labels.
+# The model must infer the temporary visual language from the six observations.
+GLUMOO_REFERENCE_MATRICES = (
+    (0, 1, 2, 3, 4, 5),
+    (1, 3, 4, 5, 6, 7),
+    (0, 2, 3, 4, 6, 7),
+    (8, 9, 10, 11, 12, 13),
+    (9, 10, 11, 12, 14, 15),
+    (8, 10, 12, 13, 14, 15),
+    (0, 1, 8, 9, 10, 15),
+    (2, 4, 8, 9, 11, 15),
+    (3, 5, 8, 10, 12, 15),
+    (1, 6, 9, 11, 12, 14),
+    (0, 7, 8, 10, 13, 15),
+    (4, 5, 9, 11, 12, 14),
+)
 
 
 def get_glumoo_reference_calibration(topic: str, count: int = 6) -> str:
     """Return a deterministic six-reference preflight matrix for one suite."""
-    route = _glumoo_visual_route(topic)
-    candidates = GLUMOO_REFERENCE_ARCHETYPES[route]
     digest = hashlib.sha256((topic or "glumoo-default").encode("utf-8")).digest()
-    start = int.from_bytes(digest[:2], "big") % len(candidates)
-    selected = [candidates[(start + offset) % len(candidates)] for offset in range(count)]
-    route_name = "多巴胺家居商业摄影" if route == "dopamine" else "自然窗光/户外生活方式摄影"
+    matrix_index = int.from_bytes(digest[:2], "big") % len(GLUMOO_REFERENCE_MATRICES)
+    matrix = GLUMOO_REFERENCE_MATRICES[matrix_index][:count]
+    selected = [GLUMOO_REFERENCE_ARCHETYPES[index] for index in matrix]
     rows = "\n".join(f"参考锚点 {index + 1}：{brief}" for index, brief in enumerate(selected))
     return (
-        f"本套唯一视觉路线：{route_name}。以下 6 个锚点来自 100+ 张 Pinterest 同类图与 "
-        f"Railway 历史成片的归纳，只学习构图规律，不复制具体作品：\n{rows}\n"
-        "开拍前先用这 6 个锚点校准人物、宠物、产品、光线、色彩与景深；第一张图作为最高风险证明图，"
+        f"本次使用无标签参考矩阵 {matrix_index + 1}/{len(GLUMOO_REFERENCE_MATRICES)}。以下 6 个锚点来自 100+ 张 "
+        f"Pinterest 同类图与 Railway 历史成片的归纳，只学习构图规律，不复制具体作品：\n{rows}\n"
+        "不要给矩阵套用预设风格名。先结合用户主题和产品参考图，动态归纳六张共同的色彩、材质、光线、空间、"
+        "人物关系、产品位置和景深；冲突特征不进入最终规则。第一张图作为最高风险证明图，"
         "产品身份和整体视觉通过后，其余页面沿用同一人物/宠物/产品和美术路线。"
     )
 
