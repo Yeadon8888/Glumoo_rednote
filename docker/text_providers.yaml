@@ -14,7 +14,7 @@ providers:
     api_key_env: CPA_API_KEY
     base_url: https://cliproxyapi-production-2dde.up.railway.app/v1
     endpoint_type: /v1/chat/completions
-    model: gpt-5.4-mini
+    model: gpt-5.6-sol
     temperature: 0.7
     max_output_tokens: 8000
 
