@@ -62,14 +62,27 @@ def create_outline_blueprint():
                 )
 
             from backend.style_profiles import is_glumoo_style
-            if is_glumoo_style(style_id) and len(images) != 6:
-                return api_error_response(
-                    validation_error(
-                        "Glumoo SOP 需要恰好 6 张当次主参考图",
-                        f"当前收到 {len(images)} 张。请重新选择 6 张独立参考图后再生成。"
-                    ),
-                    context={"endpoint": "/api/outline"},
-                )
+            if is_glumoo_style(style_id):
+                if not images:
+                    from backend.services.glumoo_reference_library import select_glumoo_references
+                    images = select_glumoo_references(topic, style_id)
+                    if len(images) != 6:
+                        return api_error_response(
+                            validation_error(
+                                "Glumoo 参考库尚未准备好 6 张可用图片",
+                                "请先补充系统参考库，或手动上传恰好 6 张参考图。"
+                            ),
+                            context={"endpoint": "/api/outline"},
+                        )
+                    logger.info("Glumoo 已按主题与风格自动选择 6 张参考图")
+                elif len(images) != 6:
+                    return api_error_response(
+                        validation_error(
+                            "手动参考图需要恰好 6 张",
+                            f"当前收到 {len(images)} 张；可删除后由系统自动选图。"
+                        ),
+                        context={"endpoint": "/api/outline"},
+                    )
 
             # 调用大纲生成服务
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")

@@ -44,7 +44,7 @@ def log_request(endpoint: str, data: dict = None):
         # 过滤敏感信息和大数据（图片二进制）
         safe_data = {
             k: v for k, v in data.items()
-            if k not in ['images', 'user_images'] and not isinstance(v, bytes)
+            if k not in ['images', 'user_images', 'product_images'] and not isinstance(v, bytes)
         }
 
         # 对图片数据只显示数量
@@ -63,6 +63,10 @@ def log_request(endpoint: str, data: dict = None):
                 safe_data['user_images'] = f"[{data['user_images']} 张图片]"
             else:
                 safe_data['user_images'] = str(data['user_images'])
+
+        if 'product_images' in data:
+            value = data['product_images']
+            safe_data['product_images'] = f"[{len(value)} 张图片]" if isinstance(value, (list, tuple)) else str(value)
 
         logger.debug(f"  请求数据: {safe_data}")
 

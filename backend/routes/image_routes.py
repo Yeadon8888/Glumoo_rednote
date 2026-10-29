@@ -91,11 +91,23 @@ def create_image_blueprint():
 
             from backend.style_profiles import is_glumoo_style
             if is_glumoo_style(style_id):
-                if len(user_images) != 6:
+                if not user_images:
+                    from backend.services.glumoo_reference_library import select_glumoo_references
+                    user_images = select_glumoo_references(user_topic, style_id)
+                    if len(user_images) != 6:
+                        return api_error_response(
+                            validation_error(
+                                "Glumoo 参考库尚未准备好 6 张可用图片",
+                                "请先补充系统参考库，或手动上传恰好 6 张参考图。"
+                            ),
+                            context={"endpoint": "/api/generate", "record_id": record_id},
+                        )
+                    logger.info("Glumoo 生图阶段已自动复用主题对应的 6 张参考图")
+                elif len(user_images) != 6:
                     return api_error_response(
                         validation_error(
-                            "Glumoo SOP 需要恰好 6 张主参考图",
-                            f"当前收到 {len(user_images)} 张主参考图。"
+                            "手动参考图需要恰好 6 张",
+                            f"当前收到 {len(user_images)} 张；可删除后由系统自动选图。"
                         ),
                         context={"endpoint": "/api/generate", "record_id": record_id},
                     )

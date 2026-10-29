@@ -114,9 +114,9 @@ function handlePlatformChange(platform: string) {
 async function handleGenerate() {
   if (!topic.value.trim()) return
 
-  if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length !== 6) {
+  if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length > 0 && uploadedImageFiles.value.length !== 6) {
     error.value = normalizeApiError(
-      'Glumoo SOP 每次必须上传恰好 6 张当次主参考图；当前为 ' + uploadedImageFiles.value.length + ' 张。产品图请从独立的品牌素材区选择。',
+      '手动参考图需要恰好 6 张；当前为 ' + uploadedImageFiles.value.length + ' 张。也可删除全部手动图，由系统从参考库自动选择。',
       '参考图数量不符合 SOP'
     )
     return

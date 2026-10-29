@@ -106,7 +106,7 @@
         </button>
       </div>
       <div v-if="store.contentStyle.startsWith('glumoo')" class="glumoo-sop-hint">
-        本次需上传恰好 6 张独立主参考图；产品图从上方品牌素材库单独选择。系统逐页只使用 1 张主参考与该页产品资产。
+        参考图可留空：系统会按主题和风格从参考库动态选择 6 张；如手动上传则需恰好 6 张。产品图仍从品牌素材库独立选择。
       </div>
     </div>
 
