@@ -76,6 +76,7 @@ export interface GeneratorState {
 
   // 用户上传的参考图片（File对象，不会被持久化）
   userImages: File[]
+  productImages: File[]
 
   // 一键二创模式（是否严格模仿布局）
   layoutMimicMode: boolean
@@ -169,6 +170,7 @@ export const useGeneratorStore = defineStore('generator', {
 
       // 用户上传的参考图片（不从 localStorage 恢复）
       userImages: [],
+      productImages: [],
 
       // 一键二创模式
       layoutMimicMode: saved.layoutMimicMode || false,
@@ -471,6 +473,7 @@ export const useGeneratorStore = defineStore('generator', {
 
       // 清空用户上传的参考图片
       this.userImages = []
+      this.productImages = []
 
       // 重置生成的内容数据
       this.content = {

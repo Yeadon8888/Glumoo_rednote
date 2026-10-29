@@ -8,10 +8,10 @@ from backend.style_profiles import (
 )
 
 
-def test_current_sop_has_free_mode_and_eleven_numbered_styles():
+def test_current_sop_has_free_mode_and_fifteen_numbered_styles():
     assert is_glumoo_style("glumoo")
-    assert len(GLUMOO_STYLES) == 11
-    assert all(is_glumoo_style(f"glumoo_{number}") for number in range(1, 12))
+    assert len(GLUMOO_STYLES) == 15
+    assert all(is_glumoo_style(f"glumoo_{number}") for number in range(1, 16))
 
 
 def test_outline_is_six_dynamic_body_pages_then_derived_cover():
@@ -36,6 +36,13 @@ def test_cover_is_derived_last_with_brand_blue():
     instruction = get_image_style_instruction("glumoo", "cover", 6, 7)
     assert "最后派生封面" in instruction
     assert "#074BBC" in instruction
+
+
+def test_new_style_definitions_are_registered():
+    assert "超广角亲密视角" in get_image_style_instruction("glumoo_12")
+    assert "俯拍生活图谱" in get_image_style_instruction("glumoo_13")
+    assert "高速瞬间定格" in get_image_style_instruction("glumoo_14")
+    assert "节日生活方式" in get_image_style_instruction("glumoo_15")
 
 
 def test_copy_is_restrained_and_branded():

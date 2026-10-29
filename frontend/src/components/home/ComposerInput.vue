@@ -56,12 +56,17 @@
           :key="asset.filename"
           type="button"
           class="asset-card"
+          :class="{ selected: selectedProductNames.has(asset.filename) }"
           @click="useBrandAsset(asset)"
         >
           <img :src="asset.url" alt="品牌素材" />
           <span>点击引用</span>
         </button>
         <span v-if="brandAssets.length === 0" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
+      </div>
+      <div v-if="selectedProductImages.length" class="product-selection-summary">
+        已选择 {{ selectedProductImages.length }} 张产品资产；它们与六张主参考分开传入。
+        <button type="button" class="clear-product-assets" @click="clearProductAssets">清空产品资产</button>
       </div>
     </div>
 
@@ -101,7 +106,7 @@
         </button>
       </div>
       <div v-if="store.contentStyle.startsWith('glumoo')" class="glumoo-sop-hint">
-        本次需上传恰好 6 张输入图，并包含需要锁定的产品素材。系统逐页只绑定其中 1 张主参考。
+        本次需上传恰好 6 张独立主参考图；产品图从上方品牌素材库单独选择。系统逐页只使用 1 张主参考与该页产品资产。
       </div>
     </div>
 
@@ -191,6 +196,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'generate'): void
   (e: 'imagesChange', images: File[]): void
+  (e: 'productImagesChange', images: File[]): void
   (e: 'layoutMimicChange', enabled: boolean): void
   (e: 'platformChange', platform: string): void
 }>()
@@ -200,6 +206,8 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 已上传的图片
 const uploadedImages = ref<UploadedImage[]>([])
+const selectedProductImages = ref<Array<UploadedImage & { filename: string }>>([])
+const selectedProductNames = ref(new Set<string>())
 const brandAssets = ref<BrandAsset[]>([])
 const showAssetLibrary = ref(false)
 
@@ -304,10 +312,38 @@ async function handleBrandAssetUpload(event: Event) {
 }
 
 async function useBrandAsset(asset: BrandAsset) {
-  if (uploadedImages.value.length >= 8) return
+  if (selectedProductNames.value.has(asset.filename)) {
+    const index = selectedProductImages.value.findIndex(item => item.filename === asset.filename)
+    if (index >= 0) {
+      URL.revokeObjectURL(selectedProductImages.value[index].preview)
+      selectedProductImages.value.splice(index, 1)
+      selectedProductNames.value.delete(asset.filename)
+      selectedProductNames.value = new Set(selectedProductNames.value)
+      emitProductImagesChange()
+    }
+    return
+  }
+  if (selectedProductImages.value.length >= 12) return
   const file = await brandAssetToFile(asset)
-  uploadedImages.value.push({ file, preview: URL.createObjectURL(file) })
-  emitImagesChange()
+  selectedProductImages.value.push({
+    file,
+    preview: URL.createObjectURL(file),
+    filename: asset.filename
+  })
+  selectedProductNames.value.add(asset.filename)
+  selectedProductNames.value = new Set(selectedProductNames.value)
+  emitProductImagesChange()
+}
+
+function emitProductImagesChange() {
+  emit('productImagesChange', selectedProductImages.value.map(item => item.file))
+}
+
+function clearProductAssets() {
+  selectedProductImages.value.forEach(item => URL.revokeObjectURL(item.preview))
+  selectedProductImages.value = []
+  selectedProductNames.value = new Set()
+  emitProductImagesChange()
 }
 
 /**
@@ -329,7 +365,11 @@ function handlePlatformChange() {
  */
 function clearPreviews() {
   uploadedImages.value.forEach(img => URL.revokeObjectURL(img.preview))
+  selectedProductImages.value.forEach(img => URL.revokeObjectURL(img.preview))
   uploadedImages.value = []
+  selectedProductImages.value = []
+  selectedProductNames.value = new Set()
+  emitProductImagesChange()
   layoutMimicMode.value = false
 }
 
@@ -394,6 +434,25 @@ defineExpose({
   border: 1px solid transparent;
   border-radius: 9px;
   background: #fff;
+  cursor: pointer;
+}
+
+.asset-card.selected {
+  border-color: #074bbc;
+  box-shadow: 0 0 0 2px rgba(7, 75, 188, 0.12);
+}
+
+.product-selection-summary {
+  margin-top: 8px;
+  color: #074bbc;
+  font-size: 12px;
+}
+
+.clear-product-assets {
+  border: 0;
+  background: transparent;
+  color: var(--text-sub);
+  text-decoration: underline;
   cursor: pointer;
 }
 

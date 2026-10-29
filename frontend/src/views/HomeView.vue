@@ -24,6 +24,7 @@
         :loading="loading"
         @generate="handleGenerate"
         @imagesChange="handleImagesChange"
+        @productImagesChange="handleProductImagesChange"
         @layoutMimicChange="handleLayoutMimicChange"
         @platformChange="handlePlatformChange"
       />
@@ -75,6 +76,7 @@ const composerRef = ref<InstanceType<typeof ComposerInput> | null>(null)
 
 // 上传的图片文件
 const uploadedImageFiles = ref<File[]>([])
+const selectedProductFiles = ref<File[]>([])
 
 // 一键二创模式
 const layoutMimicMode = ref(false)
@@ -84,6 +86,10 @@ const layoutMimicMode = ref(false)
  */
 function handleImagesChange(images: File[]) {
   uploadedImageFiles.value = images
+}
+
+function handleProductImagesChange(images: File[]) {
+  selectedProductFiles.value = images
 }
 
 /**
@@ -110,8 +116,24 @@ async function handleGenerate() {
 
   if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length !== 6) {
     error.value = normalizeApiError(
-      'Glumoo SOP 每次必须上传恰好 6 张当次输入图；当前为 ' + uploadedImageFiles.value.length + ' 张。请在这 6 张中包含需要锁定的产品素材。',
+      'Glumoo SOP 每次必须上传恰好 6 张当次主参考图；当前为 ' + uploadedImageFiles.value.length + ' 张。产品图请从独立的品牌素材区选择。',
       '参考图数量不符合 SOP'
+    )
+    return
+  }
+  if (store.contentStyle.startsWith('glumoo') && selectedProductFiles.value.length === 0) {
+    error.value = normalizeApiError(
+      'Glumoo SOP 需要独立产品资产。请从品牌素材库选择本套实际出现的正式产品图。',
+      '缺少产品资产'
+    )
+    return
+  }
+  const fullFamily = ['全家福', '产品大合集', '全系列', '六款系列']
+    .some(keyword => topic.value.includes(keyword))
+  if (store.contentStyle.startsWith('glumoo') && fullFamily && selectedProductFiles.value.length < 9) {
+    error.value = normalizeApiError(
+      '完整全家福需要 9 件独立产品资产：三款主包装和六款不同的 Glumoo PRO。',
+      '全家福产品未补齐'
     )
     return
   }
@@ -165,6 +187,7 @@ async function handleGenerate() {
       } else {
         store.userImages = []
       }
+      store.productImages = selectedProductFiles.value
 
       // 保存一键二创模式到 store
       store.layoutMimicMode = layoutMimicMode.value
@@ -172,6 +195,7 @@ async function handleGenerate() {
       // 清理 ComposerInput 的预览
       composerRef.value?.clearPreviews()
       uploadedImageFiles.value = []
+      selectedProductFiles.value = []
 
       router.push('/outline')
     } else {

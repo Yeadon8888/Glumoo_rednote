@@ -72,7 +72,8 @@ export function useGenerationRunner(
       false,
       store.layoutMimicMode,
       store.platform,
-      store.contentStyle
+      store.contentStyle,
+      store.productImages.length > 0 ? store.productImages : undefined
     )
   }
 

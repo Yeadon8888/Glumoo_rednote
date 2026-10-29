@@ -91,11 +91,15 @@ export async function generateImagesPost(
   force: boolean = false,
   layoutMimicMode: boolean = false,
   platform: 'xiaohongshu' | 'instagram' = 'xiaohongshu',
-  styleId: ContentStyleId = 'general'
+  styleId: ContentStyleId = 'general',
+  productImages?: File[]
 ) {
   try {
     const userImagesBase64 = userImages && userImages.length > 0
       ? await Promise.all(userImages.map(readFileAsDataUrl))
+      : []
+    const productImagesBase64 = productImages && productImages.length > 0
+      ? await Promise.all(productImages.map(readFileAsDataUrl))
       : []
 
     const response = await fetch(`${API_BASE_URL}/generate`, {
@@ -108,6 +112,7 @@ export async function generateImagesPost(
         task_id: taskId,
         full_outline: fullOutline,
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
+        product_images: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
         user_topic: userTopic || '',
         record_id: recordId || undefined,
         force,

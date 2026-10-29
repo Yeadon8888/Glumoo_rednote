@@ -68,6 +68,7 @@ def create_image_blueprint():
 
             # 解析 base64 格式的用户参考图片
             user_images = _parse_base64_images(data.get('user_images', []))
+            product_images = _parse_base64_images(data.get('product_images', []))
 
             log_request('/generate', {
                 'pages_count': len(pages) if pages else 0,
@@ -76,6 +77,7 @@ def create_image_blueprint():
                 'force': force,
                 'user_topic': user_topic[:50] if user_topic else None,
                 'user_images': user_images,
+                'product_images': product_images,
                 'layout_mimic_mode': layout_mimic_mode,
                 'platform': platform,
             })
@@ -86,6 +88,37 @@ def create_image_blueprint():
                     validation_error("pages 不能为空", "请提供要生成的页面列表数据。"),
                     context={"endpoint": "/api/generate", "record_id": record_id},
                 )
+
+            from backend.style_profiles import is_glumoo_style
+            if is_glumoo_style(style_id):
+                if len(user_images) != 6:
+                    return api_error_response(
+                        validation_error(
+                            "Glumoo SOP 需要恰好 6 张主参考图",
+                            f"当前收到 {len(user_images)} 张主参考图。"
+                        ),
+                        context={"endpoint": "/api/generate", "record_id": record_id},
+                    )
+                if not product_images:
+                    return api_error_response(
+                        validation_error(
+                            "Glumoo SOP 缺少独立产品资产",
+                            "请从品牌素材库选择本套实际出现的正式产品图。"
+                        ),
+                        context={"endpoint": "/api/generate", "record_id": record_id},
+                    )
+                full_family = any(
+                    keyword in f"{user_topic}\n{full_outline}"
+                    for keyword in ("全家福", "产品大合集", "全系列", "六款系列")
+                )
+                if full_family and len(product_images) < 9:
+                    return api_error_response(
+                        validation_error(
+                            "完整全家福需要 9 件独立产品资产",
+                            f"当前选择 {len(product_images)} 件；请补齐三款主包装和六款不同的 Glumoo PRO。"
+                        ),
+                        context={"endpoint": "/api/generate", "record_id": record_id},
+                    )
 
             logger.info(f"🖼️  开始图片生成任务: {task_id}, 共 {len(pages)} 页")
             image_service = get_image_service()
@@ -101,6 +134,7 @@ def create_image_blueprint():
                     layout_mimic_mode=layout_mimic_mode,
                     platform=platform,
                     style_id=style_id,
+                    product_images=product_images if product_images else None,
                 ):
                     event_type = event["event"]
                     event_data = _normalize_sse_error(
@@ -430,7 +464,9 @@ def create_image_blueprint():
                 )
 
             saved = []
-            for upload in files[:8]:
+            # A complete Glumoo family contains nine distinct product masters.
+            # Keep headroom for alternate packaging while bounding one request.
+            for upload in files[:24]:
                 suffix = Path(upload.filename or "").suffix.lower()
                 if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
                     suffix = ".png"

@@ -329,6 +329,7 @@ class ImageService:
         layout_mimic_mode: bool = False,
         platform: str = "xiaohongshu",
         style_id: str = "general",
+        product_images: Optional[List[bytes]] = None,
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """
         生成单张图片（带自动重试）
@@ -409,6 +410,8 @@ class ImageService:
                             reference_images.append(user_images[index % len(user_images)])
                         else:
                             reference_images.extend(user_images)
+                    if product_images:
+                        reference_images.extend(product_images)
                     if reference_image:
                         reference_images.append(reference_image)
 
@@ -463,6 +466,7 @@ class ImageService:
         layout_mimic_mode: bool = False,
         platform: str = "xiaohongshu",
         style_id: str = "general",
+        product_images: Optional[List[bytes]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -544,6 +548,11 @@ class ImageService:
         compressed_user_images = None
         if user_images:
             compressed_user_images = [compress_image(img, max_size_kb=200) for img in user_images]
+        compressed_product_images = None
+        if product_images:
+            compressed_product_images = [
+                compress_image(img, max_size_kb=350) for img in product_images
+            ]
 
         # 初始化任务状态
         self._task_states[task_id] = {
@@ -553,6 +562,7 @@ class ImageService:
             "cover_image": None,
             "full_outline": full_outline,
             "user_images": compressed_user_images,
+            "product_images": compressed_product_images,
             "user_topic": user_topic,
             "layout_mimic_mode": layout_mimic_mode,
             "platform": platform,
@@ -594,6 +604,7 @@ class ImageService:
                     user_images=compressed_user_images, user_topic=user_topic,
                     record_id=record_id, total_count=total,
                     layout_mimic_mode=layout_mimic_mode, platform=platform, style_id=style_id,
+                    product_images=compressed_product_images,
                 )
                 if not success:
                     failed_pages.append(page)
@@ -603,12 +614,19 @@ class ImageService:
                         "retryable": True, "phase": "content",
                     }}
                     continue
-                self._remember_generated(generated_images, index, filename, total)
-                self._task_states[task_id]["generated"][index] = filename
+                from backend.services.glumoo_postprocess import render_body_text
+                body_path = os.path.join(task_dir, filename)
                 if position == 0:
-                    with open(os.path.join(task_dir, filename), "rb") as proof_file:
+                    raw_cover_source_path = os.path.join(task_dir, "_cover_source.png")
+                    shutil.copyfile(body_path, raw_cover_source_path)
+                    with open(raw_cover_source_path, "rb") as proof_file:
                         proof_image_data = compress_image(proof_file.read(), max_size_kb=200)
                     self._task_states[task_id]["cover_image"] = proof_image_data
+                render_body_text(body_path, page.get("content", ""))
+                with open(body_path, "rb") as rendered_body:
+                    self._save_image(rendered_body.read(), filename, task_dir)
+                self._remember_generated(generated_images, index, filename, total)
+                self._task_states[task_id]["generated"][index] = filename
                 yield {"event": "complete", "data": {
                     "index": index, "status": "done",
                     "image_url": f"/api/images/{task_id}/{filename}", "phase": "content",
@@ -629,20 +647,27 @@ class ImageService:
                     "message": "六张正文已完成，正在从证明图派生封面...",
                     "current": 7, "total": total, "phase": "cover",
                 }}
-                index, success, filename, error = self._generate_single_image(
-                    cover_page, task_id, reference_image=proof_image_data,
-                    full_outline=full_outline, user_images=None, user_topic=user_topic,
-                    record_id=record_id, total_count=total,
-                    layout_mimic_mode=True, platform=platform, style_id=style_id,
-                )
-                if success:
+                try:
+                    from backend.services.glumoo_postprocess import render_cover
+                    index = cover_page["index"]
+                    filename = f"{index}.png"
+                    proof_path = os.path.join(task_dir, "_cover_source.png")
+                    cover_path = os.path.join(task_dir, filename)
+                    render_cover(proof_path, cover_path, user_topic)
+                    with open(cover_path, "rb") as rendered_cover:
+                        self._save_image(rendered_cover.read(), filename, task_dir)
+                    if record_id:
+                        self.history_service.merge_generated_image(
+                            record_id, task_id, index, filename, total_count=total
+                        )
                     self._remember_generated(generated_images, index, filename, total)
                     self._task_states[task_id]["generated"][index] = filename
                     yield {"event": "complete", "data": {
                         "index": index, "status": "done",
                         "image_url": f"/api/images/{task_id}/{filename}", "phase": "cover",
                     }}
-                else:
+                except Exception as cover_error:
+                    error = str(cover_error)
                     failed_pages.append(cover_page)
                     self._task_states[task_id]["failed"][index] = error
                     yield {"event": "error", "data": {
@@ -1007,6 +1032,48 @@ class ImageService:
         })
         return events
 
+    def _derive_glumoo_cover(
+        self,
+        task_id: str,
+        page: Dict,
+        user_topic: str,
+        record_id: Optional[str],
+        total_count: Optional[int],
+    ) -> Tuple[int, bool, Optional[str], Optional[str]]:
+        """Rebuild a Glumoo cover from an accepted body proof without another model call."""
+        from backend.services.glumoo_postprocess import render_cover
+
+        task_dir = self._get_task_dir(task_id)
+        proof_path = os.path.join(task_dir, "_cover_source.png")
+        if not os.path.exists(proof_path):
+            task_state = self._task_states.get(task_id, {})
+            pages = task_state.get("pages", [])
+            generated = task_state.get("generated", [])
+            for body_page in pages:
+                body_index = body_page.get("index")
+                if body_page.get("type") == "cover" or not isinstance(body_index, int):
+                    continue
+                filename = generated[body_index] if body_index < len(generated) else f"{body_index}.png"
+                candidate = os.path.join(task_dir, filename or f"{body_index}.png")
+                if os.path.exists(candidate):
+                    proof_path = candidate
+                    break
+
+        index = page.get("index", 0)
+        if not os.path.exists(proof_path):
+            return index, False, None, "缺少已通过的正文证明图，请先重试正文。"
+
+        filename = f"{index}.png"
+        cover_path = os.path.join(task_dir, filename)
+        render_cover(proof_path, cover_path, user_topic)
+        with open(cover_path, "rb") as rendered_cover:
+            self._save_image(rendered_cover.read(), filename, task_dir)
+        if record_id:
+            self.history_service.merge_generated_image(
+                record_id, task_id, index, filename, total_count=total_count
+            )
+        return index, True, filename, None
+
     def retry_single_image(
         self,
         task_id: str,
@@ -1045,6 +1112,7 @@ class ImageService:
 
         reference_image = None
         user_images = None
+        product_images = None
 
         # 首先尝试从任务状态中获取上下文
         if task_id in self._task_states:
@@ -1057,6 +1125,7 @@ class ImageService:
             if not user_topic:
                 user_topic = task_state.get("user_topic", "")
             user_images = task_state.get("user_images")
+            product_images = task_state.get("product_images")
 
         # 如果任务状态中没有封面图，尝试从文件系统加载
         if use_reference and reference_image is None:
@@ -1078,22 +1147,35 @@ class ImageService:
             platform = task_state.get("platform", "xiaohongshu")
             style_id = task_state.get("style_id", "general")
 
-        index, success, filename, error = self._generate_single_image(
-            page,
-            task_id,
-            reference_image,
-            0,
-            full_outline,
-            user_images,
-            user_topic,
-            record_id,
-            total_count,
-            layout_mimic_mode,
-            platform,
-            style_id,
-        )
+        from backend.style_profiles import is_glumoo_style
+        if is_glumoo_style(style_id) and page.get("type") == "cover":
+            index, success, filename, error = self._derive_glumoo_cover(
+                task_id, page, user_topic, record_id, total_count
+            )
+        else:
+            index, success, filename, error = self._generate_single_image(
+                page,
+                task_id,
+                reference_image,
+                0,
+                full_outline,
+                user_images,
+                user_topic,
+                record_id,
+                total_count,
+                layout_mimic_mode,
+                platform,
+                style_id,
+                product_images,
+            )
 
         if success:
+            if is_glumoo_style(style_id) and page.get("type") != "cover":
+                from backend.services.glumoo_postprocess import render_body_text
+                image_path = os.path.join(task_dir, filename)
+                render_body_text(image_path, page.get("content", ""))
+                with open(image_path, "rb") as rendered_body:
+                    self._save_image(rendered_body.read(), filename, task_dir)
             if task_id in self._task_states:
                 self._task_states[task_id]["generated"][index] = filename
                 if index in self._task_states[task_id]["failed"]:
@@ -1134,6 +1216,7 @@ class ImageService:
         # 获取参考图和上下文
         reference_image = None
         user_images = None
+        product_images = None
         user_topic = ""
         layout_mimic_mode = False
         platform = "xiaohongshu"
@@ -1142,6 +1225,7 @@ class ImageService:
             task_state = self._task_states[task_id]
             reference_image = task_state.get("cover_image")
             user_images = task_state.get("user_images")
+            product_images = task_state.get("product_images")
             user_topic = task_state.get("user_topic", "")
             layout_mimic_mode = task_state.get("layout_mimic_mode", False)
             platform = task_state.get("platform", "xiaohongshu")
@@ -1207,6 +1291,13 @@ class ImageService:
             nonlocal success_count, failed_count
             index, success, filename, error = result
             if success:
+                from backend.style_profiles import is_glumoo_style
+                if is_glumoo_style(style_id) and page.get("type") != "cover":
+                    from backend.services.glumoo_postprocess import render_body_text
+                    image_path = os.path.join(task_dir, filename)
+                    render_body_text(image_path, page.get("content", ""))
+                    with open(image_path, "rb") as rendered_body:
+                        self._save_image(rendered_body.read(), filename, task_dir)
                 success_count += 1
                 if task_id in self._task_states:
                     self._task_states[task_id]["generated"][index] = filename
@@ -1232,6 +1323,13 @@ class ImageService:
                 }
             }
 
+        from backend.style_profiles import is_glumoo_style
+        glumoo_cover_pages = (
+            [page for page in pages if page.get("type") == "cover"]
+            if is_glumoo_style(style_id) else []
+        )
+        retry_pages = [page for page in pages if page not in glumoo_cover_pages]
+
         if self.worker_count > 1:
             with ThreadPoolExecutor(max_workers=self.worker_count) as executor:
                 future_to_page = {
@@ -1249,8 +1347,9 @@ class ImageService:
                         layout_mimic_mode,
                         platform,
                         style_id,
+                        product_images,
                     ): page
-                    for page in pages
+                    for page in retry_pages
                 }
 
                 for future in as_completed(future_to_page):
@@ -1269,7 +1368,7 @@ class ImageService:
                             }
                         }
         else:
-            for page in pages:
+            for page in retry_pages:
                 result = self._generate_single_image(
                     page,
                     task_id,
@@ -1283,8 +1382,17 @@ class ImageService:
                     layout_mimic_mode,
                     platform,
                     style_id,
+                    product_images,
                 )
                 yield handle_result(page, result)
+
+        # Glumoo covers are always rebuilt from an accepted body image. This keeps
+        # retries aligned with the SOP and avoids an unrelated seventh generation.
+        for page in glumoo_cover_pages:
+            result = self._derive_glumoo_cover(
+                task_id, page, user_topic, record_id, total_count
+            )
+            yield handle_result(page, result)
 
         yield {
             "event": "retry_finish",
