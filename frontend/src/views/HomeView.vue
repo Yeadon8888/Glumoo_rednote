@@ -78,6 +78,18 @@ const composerRef = ref<InstanceType<typeof ComposerInput> | null>(null)
 const uploadedImageFiles = ref<File[]>([])
 const selectedProductFiles = ref<File[]>([])
 
+function inputError(title: string, detail: string, suggestion: string): AppError {
+  return {
+    type: 'https://redink.app/errors/invalid-request',
+    code: 'INVALID_REQUEST',
+    title,
+    detail,
+    suggestion,
+    status: 400,
+    retryable: false
+  }
+}
+
 // 一键二创模式
 const layoutMimicMode = ref(false)
 
@@ -115,25 +127,28 @@ async function handleGenerate() {
   if (!topic.value.trim()) return
 
   if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length > 0 && uploadedImageFiles.value.length !== 6) {
-    error.value = normalizeApiError(
-      '手动参考图需要恰好 6 张；当前为 ' + uploadedImageFiles.value.length + ' 张。也可删除全部手动图，由系统从参考库自动选择。',
-      '参考图数量不符合 SOP'
+    error.value = inputError(
+      '参考图数量不符合 SOP',
+      '手动参考图需要恰好 6 张；当前为 ' + uploadedImageFiles.value.length + ' 张。',
+      '删除全部手动图可由系统从参考库自动选择。'
     )
     return
   }
   if (store.contentStyle.startsWith('glumoo') && selectedProductFiles.value.length === 0) {
-    error.value = normalizeApiError(
-      'Glumoo SOP 需要独立产品资产。请从品牌素材库选择本套实际出现的正式产品图。',
-      '缺少产品资产'
+    error.value = inputError(
+      '缺少产品资产',
+      'Glumoo SOP 需要独立产品资产。',
+      '请从品牌素材库选择本套实际出现的正式产品图。'
     )
     return
   }
   const fullFamily = ['全家福', '产品大合集', '全系列', '六款系列']
     .some(keyword => topic.value.includes(keyword))
   if (store.contentStyle.startsWith('glumoo') && fullFamily && selectedProductFiles.value.length < 9) {
-    error.value = normalizeApiError(
-      '完整全家福需要 9 件独立产品资产：三款主包装和六款不同的 Glumoo PRO。',
-      '全家福产品未补齐'
+    error.value = inputError(
+      '全家福产品未补齐',
+      '完整全家福需要 9 件独立产品资产。',
+      '请选择三款主包装和六款不同的 Glumoo PRO。'
     )
     return
   }
