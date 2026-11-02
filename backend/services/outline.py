@@ -161,7 +161,8 @@ class OutlineService:
             logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, platform={platform}")
 
             # 根据平台动态加载对应的 prompt 模板
-            prompt_template = self._load_prompt_template(platform)
+            from backend.style_profiles import is_glumoo_style
+            prompt_template = self._load_prompt_template(platform) if not is_glumoo_style(style_id) else None
 
             # 构建用户图片上下文
             if images and len(images) > 0:
@@ -170,7 +171,17 @@ class OutlineService:
             else:
                 user_images_context = "用户没有提供参考图片。"
 
-            prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
+            if is_glumoo_style(style_id):
+                prompt = (
+                    "你是 Glumoo 品牌宠物生活方式摄影的创意总监。依据六张参考图及本次主题制定摄影分镜，"
+                    "不要制作信息图、知识卡片或电商促销排版。用简体中文输出；每页之间用 <page> 分隔，"
+                    "每页第一行为 [内容] 或 [封面]。六张正文各自明确唯一参考图序号 1–6，"
+                    "编号不得重复。每页描述具体可拍摄的生活事件、构图、光线、人物宠物关系和产品位置，"
+                    "把消费者文字留给后期，不能要求模型画标题、图标或说明卡。\n"
+                    f"本次主题：{topic}\n{user_images_context}"
+                )
+            else:
+                prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
             from backend.style_profiles import get_outline_style_instruction
             style_instruction = get_outline_style_instruction(style_id, topic=topic)
             if style_instruction:

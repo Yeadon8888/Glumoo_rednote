@@ -16,7 +16,8 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 class GlumooReferenceLibrary:
     def __init__(self, history_root: str | Path | None = None):
         self.history_root = Path(history_root or os.getenv("HISTORY_DIR") or Path(__file__).resolve().parents[2] / "history")
-        self.library_dir = self.history_root / "reference_library"
+        reviewed = self.history_root / "reference_library_reviewed_20261102"
+        self.library_dir = reviewed if reviewed.is_dir() else self.history_root / "reference_library"
 
     def _library_candidates(self) -> List[Path]:
         if not self.library_dir.is_dir():

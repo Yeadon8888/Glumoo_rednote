@@ -354,7 +354,18 @@ class ImageService:
             logger.debug(f"生成图片 [{index}]: type={page_type}")
 
             # 根据配置选择模板（短 prompt 或完整 prompt）
-            if self.use_short_prompt and self.prompt_template_short:
+            from backend.style_profiles import is_glumoo_style
+            if is_glumoo_style(style_id):
+                prompt = (
+                    "Create one premium, photorealistic Glumoo pet lifestyle campaign photograph. "
+                    "The first reference is the sole composition and photography reference; "
+                    "subsequent images are product identity references. Interpret the scene naturally, "
+                    "with depth, believable light, tactile materials and meaningful human-pet interaction. "
+                    "Do not draw headlines, captions, labels, diagrams, icons, stickers, cards, "
+                    "infographics or watermarks; preserve the real product packaging identity. "
+                    f"\n主题：{user_topic}\n本页拍摄方案（文字内容仅作为叙事背景，不上图）：\n{page_content}"
+                )
+            elif self.use_short_prompt and self.prompt_template_short:
                 # 短 prompt 模式：只包含页面类型和内容
                 prompt = self.prompt_template_short.format(
                     page_content=page_content,
@@ -407,7 +418,10 @@ class ImageService:
                         from backend.style_profiles import is_glumoo_style
                         if is_glumoo_style(style_id) and page_type != "cover":
                             # Glumoo clean-input rule: one bound main reference per body page.
-                            reference_images.append(user_images[index % len(user_images)])
+                            import re
+                            match = re.search(r"(?:绑定的)?主?参考图(?:序号)?\s*[：:#]?\s*([1-6])", page_content)
+                            reference_index = int(match.group(1)) - 1 if match else index % len(user_images)
+                            reference_images.append(user_images[reference_index])
                         else:
                             reference_images.extend(user_images)
                     if product_images:
@@ -613,6 +627,15 @@ class ImageService:
                         "index": index, "status": "error", "message": error,
                         "retryable": True, "phase": "content",
                     }}
+                    if position == 0:
+                        for pending_page in body_pages[1:]:
+                            failed_pages.append(pending_page)
+                            self._task_states[task_id]["failed"][pending_page["index"]] = "证明图失败，后续正文暂停。"
+                            yield {"event": "error", "data": {
+                                "index": pending_page["index"], "status": "error",
+                                "message": "证明图失败，后续正文暂停。", "retryable": True, "phase": "content",
+                            }}
+                        break
                     continue
                 from backend.services.glumoo_postprocess import render_body_text
                 body_path = os.path.join(task_dir, filename)
