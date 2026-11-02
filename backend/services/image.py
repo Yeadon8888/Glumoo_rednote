@@ -330,6 +330,7 @@ class ImageService:
         platform: str = "xiaohongshu",
         style_id: str = "general",
         product_images: Optional[List[bytes]] = None,
+        product_names: Optional[List[str]] = None,
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """
         生成单张图片（带自动重试）
@@ -356,8 +357,13 @@ class ImageService:
             # 根据配置选择模板（短 prompt 或完整 prompt）
             from backend.style_profiles import is_glumoo_style
             if is_glumoo_style(style_id):
-                prompt = (
+                image_format = (
+                    "Create one premium Glumoo editorial composition using photographic fragments. "
+                    if style_id == "glumoo_11" else
                     "Create one premium, photorealistic Glumoo pet lifestyle campaign photograph. "
+                )
+                prompt = (
+                    image_format +
                     "The first reference is the sole composition and photography reference; "
                     "subsequent images are product identity references. Interpret the scene naturally, "
                     "with depth, believable light, tactile materials and meaningful human-pet interaction. "
@@ -365,6 +371,8 @@ class ImageService:
                     "infographics or watermarks; preserve the real product packaging identity. "
                     f"\n主题：{user_topic}\n本页拍摄方案（文字内容仅作为叙事背景，不上图）：\n{page_content}"
                 )
+                from backend.services.glumoo_product_scope import product_scope_instruction
+                prompt += "\n\n" + product_scope_instruction(product_names or [])
             elif self.use_short_prompt and self.prompt_template_short:
                 # 短 prompt 模式：只包含页面类型和内容
                 prompt = self.prompt_template_short.format(
@@ -481,6 +489,7 @@ class ImageService:
         platform: str = "xiaohongshu",
         style_id: str = "general",
         product_images: Optional[List[bytes]] = None,
+        product_names: Optional[List[str]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -577,6 +586,7 @@ class ImageService:
             "full_outline": full_outline,
             "user_images": compressed_user_images,
             "product_images": compressed_product_images,
+            "product_names": product_names or [],
             "user_topic": user_topic,
             "layout_mimic_mode": layout_mimic_mode,
             "platform": platform,
@@ -619,6 +629,7 @@ class ImageService:
                     record_id=record_id, total_count=total,
                     layout_mimic_mode=layout_mimic_mode, platform=platform, style_id=style_id,
                     product_images=compressed_product_images,
+                    product_names=product_names,
                 )
                 if not success:
                     failed_pages.append(page)
@@ -1136,6 +1147,7 @@ class ImageService:
         reference_image = None
         user_images = None
         product_images = None
+        product_names = None
 
         # 首先尝试从任务状态中获取上下文
         if task_id in self._task_states:
@@ -1149,6 +1161,7 @@ class ImageService:
                 user_topic = task_state.get("user_topic", "")
             user_images = task_state.get("user_images")
             product_images = task_state.get("product_images")
+            product_names = task_state.get("product_names")
 
         # 如果任务状态中没有封面图，尝试从文件系统加载
         if use_reference and reference_image is None:
@@ -1190,6 +1203,7 @@ class ImageService:
                 platform,
                 style_id,
                 product_images,
+                product_names,
             )
 
         if success:
@@ -1240,6 +1254,7 @@ class ImageService:
         reference_image = None
         user_images = None
         product_images = None
+        product_names = None
         user_topic = ""
         layout_mimic_mode = False
         platform = "xiaohongshu"
@@ -1249,6 +1264,7 @@ class ImageService:
             reference_image = task_state.get("cover_image")
             user_images = task_state.get("user_images")
             product_images = task_state.get("product_images")
+            product_names = task_state.get("product_names")
             user_topic = task_state.get("user_topic", "")
             layout_mimic_mode = task_state.get("layout_mimic_mode", False)
             platform = task_state.get("platform", "xiaohongshu")
@@ -1371,6 +1387,7 @@ class ImageService:
                         platform,
                         style_id,
                         product_images,
+                        product_names,
                     ): page
                     for page in retry_pages
                 }
@@ -1406,6 +1423,7 @@ class ImageService:
                     platform,
                     style_id,
                     product_images,
+                    product_names,
                 )
                 yield handle_result(page, result)
 

@@ -69,6 +69,7 @@ def create_image_blueprint():
             # 解析 base64 格式的用户参考图片
             user_images = _parse_base64_images(data.get('user_images', []))
             product_images = _parse_base64_images(data.get('product_images', []))
+            product_names = data.get('product_names', [])
 
             log_request('/generate', {
                 'pages_count': len(pages) if pages else 0,
@@ -119,18 +120,18 @@ def create_image_blueprint():
                         ),
                         context={"endpoint": "/api/generate", "record_id": record_id},
                     )
-                full_family = any(
-                    keyword in f"{user_topic}\n{full_outline}"
-                    for keyword in ("全家福", "产品大合集", "全系列", "六款系列")
-                )
-                if full_family and len(product_images) < 9:
+                if len(product_names) != len(product_images):
                     return api_error_response(
                         validation_error(
-                            "完整全家福需要 9 件独立产品资产",
-                            f"当前选择 {len(product_images)} 件；请补齐三款主包装和六款不同的 Glumoo PRO。"
+                            "产品清单与产品图片不一致",
+                            "请回到首页重新选择本次产品后生成大纲。"
                         ),
                         context={"endpoint": "/api/generate", "record_id": record_id},
                     )
+                from backend.services.glumoo_product_scope import find_scope_conflict
+                conflict = find_scope_conflict(product_names, pages)
+                if conflict:
+                    return api_error_response(validation_error("大纲产品范围与所选产品不一致", conflict), context={"endpoint": "/api/generate"})
 
             logger.info(f"🖼️  开始图片生成任务: {task_id}, 共 {len(pages)} 页")
             image_service = get_image_service()
@@ -147,6 +148,7 @@ def create_image_blueprint():
                     platform=platform,
                     style_id=style_id,
                     product_images=product_images if product_images else None,
+                    product_names=product_names,
                 ):
                     event_type = event["event"]
                     event_data = _normalize_sse_error(

@@ -1,6 +1,9 @@
 """Glumoo SOP and product-level styles shared by outline, copy, and images."""
 
 from typing import Optional
+from functools import lru_cache
+from pathlib import Path
+import re
 
 STYLE_PROFILES = {
     "general": "",
@@ -30,11 +33,20 @@ GLUMOO_STYLES = {
 def is_glumoo_style(style_id: str) -> bool:
     return style_id == "glumoo" or style_id in GLUMOO_STYLES
 
+
+@lru_cache(maxsize=1)
+def _registered_style_details():
+    source = (Path(__file__).parent / "prompts" / "glumoo_style_registry.md").read_text(encoding="utf-8")
+    sections = re.split(r"(?m)^### Glumoo 风格(\d+)｜[^\n]+\n", source)
+    return {f"glumoo_{number}": body.split("\n## ", 1)[0].strip()
+            for number, body in zip(sections[1::2], sections[2::2])}
+
 def get_glumoo_style_instruction(style_id: str) -> str:
     if style_id == "glumoo":
         return "Glumoo 自由创意：不预设场景类型，只从本次六张参考图动态归纳临时视觉规则。"
     name, boundary = GLUMOO_STYLES[style_id]
-    return f"Glumoo 风格 {style_id.split('_')[-1]}·{name}：{boundary}"
+    details = _registered_style_details().get(style_id, "")
+    return f"Glumoo 风格 {style_id.split('_')[-1]}·{name}：{boundary}\n{details}"
 
 GLUMOO_OUTLINE_INSTRUCTION = """
 使用 Glumoo 当前版 SOP。输出恰好 7 页：前 6 页全部标记为[内容]，最后 1 页标记为[封面]。封面在执行阶段才从通过验收的正文图派生，不得先生成封面来约束正文。
@@ -58,7 +70,7 @@ GLUMOO_VISUAL_BASE = """
 
 先锁定产品：包装形状与长宽比、主色、Logo/品名布局、封口或瓶盖、数量、位置、比例、角度、承托面、遮挡关系和安全区。禁止改字、换色、重画 Logo、增减包装、悬浮、错误投影或不合理比例。无法可靠复现小字时宁可弱化，不得伪造。
 
-产品资产与摄影参考严格分轨：摄影参考只控制构图、光线、材质和关系；正式产品母图锁身份、几何和颜色；透明恢复层只允许兼容时局部保护或修复，不能代替主产品图。完整全家福必须是三款主包装加六款身份各不相同的 Glumoo PRO，共九件独立产品，禁止一款换色、复制或用旧拼图冒充。Glumoo PRO 圆罐保持高窄直筒；与大袋同一承重面时可见高度约为袋高 45%–55%，与横盒同画面时不高于盒高约 80%，无大包装对照时不超过整张竖图高度约 28%。
+产品资产与摄影参考严格分轨：摄影参考只控制构图、光线、材质和关系；正式产品母图锁身份、几何和颜色。产品范围以本次所选产品清单为准，不能因“全家福”自行加入其他产品。Glumoo PRO 圆罐保持高窄直筒；只有实际选中大袋或横盒时才参考相应比例，无大包装对照时罐高不超过整张竖图高度约 28%。
 
 竖版 3:4，真实商业级摄影，毛发、皮肤、肢体、接触、重力、透视、光影可信。生图模型不得生成消费者文字、标题、便签、图标、水印或平台 Logo；六张正文各有一句来自本页定稿内容的消费者可见小字，由后期文字层准确排版，不能为加字重画照片或包装。除非编号风格明确允许，否则不做拼贴。
 

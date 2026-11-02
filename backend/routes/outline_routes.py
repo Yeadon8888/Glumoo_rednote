@@ -49,7 +49,7 @@ def create_outline_blueprint():
 
         try:
             # 解析请求数据
-            topic, images, platform, style_id = _parse_outline_request()
+            topic, images, platform, style_id, product_images, product_names = _parse_outline_request()
 
             log_request('/outline', {'topic': topic, 'images': images, 'platform': platform})
 
@@ -63,6 +63,8 @@ def create_outline_blueprint():
 
             from backend.style_profiles import is_glumoo_style
             if is_glumoo_style(style_id):
+                if not product_images:
+                    return api_error_response(validation_error("缺少产品素材", "请返回首页选择本次实际使用的产品。"))
                 if not images:
                     from backend.services.glumoo_reference_library import select_glumoo_references
                     images = select_glumoo_references(topic, style_id)
@@ -88,12 +90,18 @@ def create_outline_blueprint():
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
             outline_service = get_outline_service()
             result = outline_service.generate_outline(
-                topic, images if images else None, platform, style_id
+                topic, images if images else None, platform, style_id,
+                product_images=product_images, product_names=product_names
             )
 
             # 记录结果
             elapsed = time.time() - start_time
             if result["success"]:
+                if is_glumoo_style(style_id):
+                    from backend.services.glumoo_product_scope import find_scope_conflict
+                    conflict = find_scope_conflict(product_names, result.get('pages', []))
+                    if conflict:
+                        return api_error_response(validation_error("生成的大纲包含未选中的产品", conflict))
                 logger.info(f"✅ 大纲生成成功，耗时 {elapsed:.2f}s，共 {len(result.get('pages', []))} 页")
                 return jsonify(result), 200
             else:
@@ -144,7 +152,8 @@ def _parse_outline_request():
                     image_data = file.read()
                     images.append(image_data)
 
-        return topic, images, platform, style_id
+        products = [file for file in request.files.getlist('product_images') if file and file.filename]
+        return topic, images, platform, style_id, [file.read() for file in products], [file.filename for file in products]
 
     # JSON 请求（无图片或 base64 图片）
     data = request.get_json()
@@ -162,4 +171,4 @@ def _parse_outline_request():
                 img_b64 = img_b64.split(',')[1]
             images.append(base64.b64decode(img_b64))
 
-    return topic, images, platform, style_id
+    return topic, images, platform, style_id, [], []

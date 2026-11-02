@@ -156,6 +156,8 @@ class OutlineService:
         images: Optional[List[bytes]] = None,
         platform: str = 'xiaohongshu',
         style_id: str = 'general',
+        product_images: Optional[List[bytes]] = None,
+        product_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         try:
             logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, platform={platform}")
@@ -172,6 +174,7 @@ class OutlineService:
                 user_images_context = "用户没有提供参考图片。"
 
             if is_glumoo_style(style_id):
+                from backend.services.glumoo_product_scope import product_scope_instruction
                 prompt = (
                     "你是 Glumoo 品牌宠物生活方式摄影的创意总监。依据六张参考图及本次主题制定摄影分镜，"
                     "不要制作信息图、知识卡片或电商促销排版。用简体中文输出；每页之间用 <page> 分隔，"
@@ -180,6 +183,8 @@ class OutlineService:
                     "把消费者文字留给后期，不能要求模型画标题、图标或说明卡。\n"
                     f"本次主题：{topic}\n{user_images_context}"
                 )
+                prompt += "\n\n" + product_scope_instruction(product_names or [])
+                prompt += f"\n前 {len(images or [])} 张图片只作摄影参考；其后 {len(product_images or [])} 张为唯一允许的正式产品母图，依顺序对应上述产品清单。不得复制摄影参考图里的产品。"
             else:
                 prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
             from backend.style_profiles import get_outline_style_instruction
@@ -202,7 +207,7 @@ class OutlineService:
                 model=model,
                 temperature=temperature,
                 max_output_tokens=max_output_tokens,
-                images=images
+                images=(images or []) + (product_images or []) if is_glumoo_style(style_id) else images
             )
 
             logger.debug(f"API 返回文本长度: {len(outline_text)} 字符")

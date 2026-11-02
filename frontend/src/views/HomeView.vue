@@ -142,17 +142,6 @@ async function handleGenerate() {
     )
     return
   }
-  const fullFamily = ['全家福', '产品大合集', '全系列', '六款系列']
-    .some(keyword => topic.value.includes(keyword))
-  if (store.contentStyle.startsWith('glumoo') && fullFamily && selectedProductFiles.value.length < 9) {
-    error.value = inputError(
-      '全家福产品未补齐',
-      '完整全家福需要 9 件独立产品资产。',
-      '请选择三款主包装和六款不同的 Glumoo PRO。'
-    )
-    return
-  }
-
   loading.value = true
   error.value = null
 
@@ -163,7 +152,8 @@ async function handleGenerate() {
       topic.value.trim(),
       imageFiles.length > 0 ? imageFiles : undefined,
       store.platform,
-      store.contentStyle
+      store.contentStyle,
+      selectedProductFiles.value
     )
 
     if (result.success && result.pages) {

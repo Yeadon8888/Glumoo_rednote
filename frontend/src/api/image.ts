@@ -113,6 +113,7 @@ export async function generateImagesPost(
         full_outline: fullOutline,
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
         product_images: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
+        product_names: productImages?.map(file => file.name) || [],
         user_topic: userTopic || '',
         record_id: recordId || undefined,
         force,
