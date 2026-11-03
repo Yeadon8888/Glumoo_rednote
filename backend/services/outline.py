@@ -175,6 +175,7 @@ class OutlineService:
 
             if is_glumoo_style(style_id):
                 from backend.services.glumoo_product_scope import product_scope_instruction
+                user_images_context = "前六张为摄影语言参考，仅提取构图、光线、材质及人与宠物关系；其中的品牌、产品、包装与文字均不得成为本次产品依据。"
                 prompt = (
                     "你是 Glumoo 品牌宠物生活方式摄影的创意总监。依据六张参考图及本次主题制定摄影分镜，"
                     "不要制作信息图、知识卡片或电商促销排版。用简体中文输出；每页之间用 <page> 分隔，"
@@ -212,6 +213,31 @@ class OutlineService:
 
             logger.debug(f"API 返回文本长度: {len(outline_text)} 字符")
             pages = self._parse_outline(outline_text)
+            if is_glumoo_style(style_id):
+                from backend.services.glumoo_product_scope import find_scope_conflict
+                conflict = find_scope_conflict(product_names or [], pages)
+                if conflict:
+                    logger.warning("Glumoo 大纲产品范围冲突，自动修正一次: %s", conflict)
+                    outline_text = self.client.generate_text(
+                        prompt=(prompt + "\n\n【产品范围校正】上一版大纲出现以下冲突：" + conflict
+                                + "\n请完整重写七页大纲，保留所选风格及生活任务。每页产品合约只能列出上面产品清单支持的包装，"
+                                  "不得从摄影参考图猜测产品。只输出修正后的完整大纲。"),
+                        model=model,
+                        temperature=0.2,
+                        max_output_tokens=max_output_tokens,
+                        images=(images or []) + (product_images or []),
+                    )
+                    pages = self._parse_outline(outline_text)
+                    remaining = find_scope_conflict(product_names or [], pages)
+                    if remaining:
+                        logger.warning("Glumoo 大纲自动校正后仍有冲突: %s", remaining)
+                        from backend.errors import AppError
+                        return {"success": False, "error": AppError(
+                            code="PRODUCT_SCOPE_CONFLICT", title="大纲产品范围校正未通过",
+                            detail=remaining,
+                            suggestion="系统已自动校正一次，但模型仍引入未选中的产品。请重试生成，所选产品无需调整。",
+                            status=502, retryable=True,
+                        ).to_dict()}
             logger.info(f"大纲解析完成，共 {len(pages)} 页")
 
             return {

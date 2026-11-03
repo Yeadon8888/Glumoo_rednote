@@ -5,6 +5,7 @@ from pathlib import Path
 OFFICIAL_PRODUCTS = {
     "glumoo_official_01_multivitamin_box.png": "多维力盒装",
     "glumoo_official_02_jump_bag.png": "跃力袋装",
+    "glumoo_official_02_jump_stick.png": "跃力独立条装",
     "glumoo_official_03_digest_bag.png": "畅清袋装",
     "glumoo_official_04_bonemax.png": "Glumoo PRO 强骨力圆罐",
     "glumoo_official_05_flexmax.png": "Glumoo PRO 灵动力圆罐",
@@ -34,7 +35,20 @@ def find_scope_conflict(names, pages):
     forbidden = re.compile(r"自立袋|袋装|包装袋|外袋|盒装|条包|条装")
     for page in pages:
         text = page.get("content", "") if isinstance(page, dict) else ""
-        for sentence in re.split(r"[。；;\n]", text):
-            if forbidden.search(sentence) and not re.search(r"(?:禁止|不得|不能|不使用|不出现|排除|无|没有|无需)", sentence):
-                return f"第 {page.get('index', 0) + 1} 页提到未选择的袋装、盒装或条包；请修改或重新生成大纲。"
+        # Scope negation to the relevant clause: an unrelated “无遮挡” must not
+        # excuse “摆放盒装”, and “不要袋装” is not a request to add a bag.
+        for clause in re.split(r"[。；;，,\n]", text):
+            for match in forbidden.finditer(clause):
+                before, after = clause[:match.start()], clause[match.end():]
+                negative = re.search(
+                    r"禁止|不得|不能|不要|不使用|不出现|不含|不包括|不添加|不增加|不摆放|"
+                    r"不展示|不引入|不生成|不允许|不是|而非|并非|排除|避免|未选|未提供|没有|无需", before
+                ) or re.search(r"^\s*(?:为?零|为?0|(?:均|一律)?(?:禁止|不得|不)(?:出现|使用|添加|展示))", after)
+                if negative:
+                    continue
+                # “无袋装” is negative; “无遮挡的袋装” is still a product request.
+                if before.rstrip().endswith("无"):
+                    continue
+                excerpt = clause.strip()[:180]
+                return f"第 {page.get('index', 0) + 1} 页产品范围冲突：{excerpt}。本次只选择了圆罐产品。"
     return None
