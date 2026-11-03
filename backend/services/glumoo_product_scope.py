@@ -42,7 +42,8 @@ def find_scope_conflict(names, pages):
                 before, after = clause[:match.start()], clause[match.end():]
                 negative = re.search(
                     r"禁止|不得|不能|不要|不使用|不出现|不含|不包括|不添加|不增加|不摆放|"
-                    r"不展示|不引入|不生成|不允许|不是|而非|并非|排除|避免|未选|未提供|没有|无需", before
+                    r"不展示|不引入|不生成|不允许|不沿用|不继承|不复制|不采用|不借用|不带入|"
+                    r"不是|而非|并非|排除|避免|未选|未提供|没有|无需", before
                 ) or re.search(r"^\s*(?:为?零|为?0|(?:均|一律)?(?:禁止|不得|不)(?:出现|使用|添加|展示))", after)
                 if negative:
                     continue

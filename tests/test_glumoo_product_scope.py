@@ -34,6 +34,7 @@ def test_all_registered_styles_have_specific_sop_details():
     "产品合约：未选择袋装，禁止盒装和条包。",
     "产品合约：袋装不得出现。",
     "产品合约：禁止袋装、盒装、条包。",
+    "不沿用参考图中的盒装产品、品牌文字或包装。",
 ])
 def test_negative_packaging_mentions_are_not_product_requests(content):
     assert find_scope_conflict(CANS, [{"index": 0, "content": content}]) is None
