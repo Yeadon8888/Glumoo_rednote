@@ -13,7 +13,7 @@ import type { AppError } from '../utils/errors'
 
 export async function createHistory(
   topic: string,
-  outline: { raw: string; pages: Page[] },
+  outline: { raw: string; pages: Page[]; context?: Record<string, unknown> },
   taskId?: string
 ): Promise<{ success: boolean; record_id?: string; error?: AppError | string; error_message?: string }> {
   try {

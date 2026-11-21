@@ -7,12 +7,14 @@ export async function generateContent(
   topic: string,
   outline: string,
   platform: 'xiaohongshu' | 'instagram' = 'xiaohongshu',
-  styleId: ContentStyleId = 'general'
+  styleId: ContentStyleId = 'general',
+  recordId?: string | null
 ): Promise<ContentResponse> {
   const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content`, {
     topic,
     outline,
     platform,
+    record_id: recordId,
     style_id: styleId
   })
   return response.data

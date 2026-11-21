@@ -8,10 +8,10 @@ from backend.style_profiles import (
 )
 
 
-def test_current_sop_has_free_mode_and_fifteen_numbered_styles():
+def test_current_sop_has_free_mode_and_twenty_two_numbered_styles():
     assert is_glumoo_style("glumoo")
-    assert len(GLUMOO_STYLES) == 15
-    assert all(is_glumoo_style(f"glumoo_{number}") for number in range(1, 16))
+    assert len(GLUMOO_STYLES) == 22
+    assert all(is_glumoo_style(f"glumoo_{number}") for number in range(1, 23))
 
 
 def test_outline_is_six_dynamic_body_pages_then_derived_cover():

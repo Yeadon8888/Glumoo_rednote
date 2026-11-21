@@ -80,6 +80,7 @@
             {{ copiedCopywriting ? '已复制' : '复制' }}
           </button>
         </div>
+        <p v-if="store.platform === 'xiaohongshu' && store.contentStyle.startsWith('glumoo')">发布前请在小红书「笔记内容声明」中选择「含 AI 合成内容」。</p>
         <div class="copywriting-content">
           <p v-for="(paragraph, index) in formattedCopywriting" :key="index">{{ paragraph }}</p>
         </div>
@@ -183,7 +184,7 @@ async function handleGenerate() {
       store.topic,
       store.outline.raw,
       store.platform,
-      store.contentStyle
+      store.contentStyle, store.recordId
     )
 
     if (result.success && result.titles && result.copywriting && result.tags) {

@@ -73,6 +73,18 @@ def create_content_blueprint():
             # 调用内容生成服务
             logger.info(f"🔄 开始生成内容，主题: {topic[:50]}...")
             content_service = get_content_service()
+            study = None
+            if data.get("record_id"):
+                from uuid import UUID
+                from backend.services.history import get_history_service
+                record = get_history_service().get_record(str(UUID(data["record_id"])), sync_images=False)
+                if record and record.get("title") == topic:
+                    study = (record.get("outline", {}).get("context") or {}).get("research")
+            if study:
+                import json
+                notes = [n["title"] for n in study["notes"] if n["id"] in study["selected"]]
+                if notes:
+                    outline += "\n外部笔记标题样本（仅供读者问题研究）：" + json.dumps(notes, ensure_ascii=False)
             result = content_service.generate_content(topic, outline, platform, style_id)
 
             # 记录结果

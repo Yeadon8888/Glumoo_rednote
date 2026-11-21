@@ -137,6 +137,15 @@ def create_history_blueprint():
                     context={"endpoint": "/api/history/<id>", "record_id": record_id},
                 )
 
+            from pathlib import Path
+            from backend.services.studio import review_revision
+            record["review_revision"] = review_revision(record)
+            task = (record.get("images") or {}).get("task_id") or ""
+            if task and task == Path(task).name and task not in {".", ".."}:
+                native = Path(history_service.history_dir) / task / "native"
+                if native.is_dir():
+                    record["native_files"] = {p.stem: p.name for p in native.iterdir()
+                                              if p.stem.isdigit() and p.suffix in {".png",".jpeg",".webp"}}
             return jsonify({
                 "success": True,
                 "record": record

@@ -9,6 +9,7 @@ export interface Page {
 export interface OutlineResponse {
   success: boolean
   outline?: string
+  context?: Record<string, unknown>
   pages?: Page[]
   error?: AppError | string
   error_message?: string

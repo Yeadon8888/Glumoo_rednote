@@ -146,14 +146,17 @@ async function handleGenerate() {
   error.value = null
 
   try {
-    const imageFiles = uploadedImageFiles.value
+    const panel=composerRef.value?.researchPanel
+    const autoMatch=store.contentStyle.startsWith('glumoo') && !uploadedImageFiles.value.length
+    const imageFiles = autoMatch && panel ? await panel.selectedFiles() : uploadedImageFiles.value
 
     const result = await generateOutline(
       topic.value.trim(),
       imageFiles.length > 0 ? imageFiles : undefined,
       store.platform,
       store.contentStyle,
-      selectedProductFiles.value
+      selectedProductFiles.value,
+      panel?.study?.id
     )
 
     if (result.success && result.pages) {
@@ -168,7 +171,10 @@ async function handleGenerate() {
           topic.value.trim(),
           {
             raw: result.outline || '',
-            pages: result.pages
+            pages: result.pages, context: {
+              ...result.context, reference_source: autoMatch ? 'reviewed_library' : 'manual',
+              reference_choices: autoMatch ? panel?.picks : undefined
+            }
           }
         )
 

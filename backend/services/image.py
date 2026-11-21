@@ -437,13 +437,26 @@ class ImageService:
                     if reference_image:
                         reference_images.append(reference_image)
 
-                    image_data = self.generator.generate_image(
-                        prompt=prompt,
-                        aspect_ratio=aspect_ratio,
-                        temperature=self.provider_config.get('temperature', 1.0),
-                        model=self.provider_config.get('model', 'nano-banana-2'),
-                        reference_images=reference_images if reference_images else None,
-                    )
+                    from backend.generators.image_api import ImageModelUnavailable
+                    from backend.services.studio import setting
+                    models = [self.provider_config.get('model', 'nano-banana-2')]
+                    if self.provider_config.get("model_order"):
+                        models = setting("cpa_models", self.provider_config["model_order"])
+                    attempts = []
+                    trace = {}
+                    for model in models:
+                        attempts.append(model)
+                        try:
+                            image_data = self.generator.generate_image(
+                                prompt=prompt, aspect_ratio=aspect_ratio,
+                                temperature=self.provider_config.get('temperature', 1.0),
+                                model=model, reference_images=reference_images or None, generation_trace=trace,
+                            )
+                            break
+                        except ImageModelUnavailable:
+                            if model == models[-1]:
+                                raise
+                            logger.warning("图片模型暂不可用，切换下一顺位: %s", model)
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")
                     image_data = self.generator.generate_image(
@@ -458,6 +471,23 @@ class ImageService:
             task_dir = self._get_task_dir(task_id)
             os.makedirs(task_dir, exist_ok=True)
             self._save_image(image_data, filename, task_dir)
+            if self.provider_config.get("type") == "image_api" and trace:
+                from pathlib import Path
+                from hashlib import sha256
+                native_dir = Path(task_dir) / "native"
+                native_dir.mkdir(exist_ok=True)
+                source = trace.pop("source")
+                native = native_dir / f"{index}.{trace['format']}"
+                temporary = native.with_suffix(f".{uuid.uuid4().hex}.tmp")
+                temporary.write_bytes(source)
+                os.replace(temporary, native)
+                receipt = Path(task_dir) / f"{index}.model.json"
+                temp = receipt.with_suffix(f".{uuid.uuid4().hex}.tmp")
+                trace.update(model=model, attempted=attempts, style=style_id,
+                             native_file=native.name, prompt=prompt, products=product_names or [],
+                             references=[sha256(r).hexdigest() for r in reference_images])
+                temp.write_text(json.dumps(trace, ensure_ascii=False))
+                os.replace(temp, receipt)
             logger.info(f"✅ 图片 [{index}] 生成成功: {filename}")
 
             if record_id:
@@ -574,7 +604,7 @@ class ImageService:
         compressed_product_images = None
         if product_images:
             compressed_product_images = [
-                compress_image(img, max_size_kb=350) for img in product_images
+                compress_image(img, max_size_kb=1500) for img in product_images
             ]
 
         # 初始化任务状态

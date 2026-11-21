@@ -8,12 +8,14 @@ export async function generateOutline(
   images?: File[],
   platform: 'xiaohongshu' | 'instagram' = 'xiaohongshu',
   styleId: ContentStyleId = 'general',
-  productImages?: File[]
+  productImages?: File[],
+  researchId?: string
 ): Promise<OutlineResponse & { has_images?: boolean }> {
   if ((images && images.length > 0) || (productImages && productImages.length > 0)) {
     const formData = new FormData()
     formData.append('topic', topic)
     formData.append('platform', platform)
+    if (researchId) formData.append('research_id', researchId)
     formData.append('style_id', styleId)
     ;(images || []).forEach((file) => {
       formData.append('images', file)
@@ -35,6 +37,7 @@ export async function generateOutline(
   const response = await axios.post<OutlineResponse>(`${API_BASE_URL}/outline`, {
     topic,
     platform,
+    research_id: researchId,
     style_id: styleId
   })
   return response.data

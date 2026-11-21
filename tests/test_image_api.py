@@ -98,3 +98,22 @@ def test_output_is_center_cropped_to_requested_ratio(monkeypatch):
 
     with Image.open(io.BytesIO(result)) as image:
         assert image.size == (900, 1200)
+
+
+def test_explicit_model_failure_is_eligible_for_fallback_but_auth_is_not(monkeypatch):
+    from backend.generators.image_api import ImageModelUnavailable
+    import pytest
+    generator = make_generator()
+    class Error:
+        status_code = 404
+        text = "error"
+        def json(self):
+            return {"error":{"code":"model_not_found" if self.status_code == 404 else "invalid_api_key"}}
+    error = Error()
+    monkeypatch.setattr("backend.generators.image_api.requests.post",lambda *a,**k:error)
+    with pytest.raises(ImageModelUnavailable):
+        generator.generate_image("pet")
+    error.status_code = 401
+    with pytest.raises(Exception) as caught:
+        generator.generate_image("pet")
+    assert not isinstance(caught.value, ImageModelUnavailable)

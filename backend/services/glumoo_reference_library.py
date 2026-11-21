@@ -19,7 +19,7 @@ class GlumooReferenceLibrary:
         reviewed = self.history_root / "reference_library_reviewed_20261102"
         self.library_dir = reviewed if reviewed.is_dir() else self.history_root / "reference_library"
 
-    def _library_candidates(self) -> List[Path]:
+    def library_candidates(self) -> List[Path]:
         if not self.library_dir.is_dir():
             return []
         return sorted(
@@ -44,7 +44,7 @@ class GlumooReferenceLibrary:
         return candidates
 
     def select_paths(self, topic: str, style_id: str, count: int = 6) -> List[Path]:
-        candidates = self._library_candidates()
+        candidates = self.library_candidates()
         if len(candidates) < count:
             candidates = self._history_candidates()
         if len(candidates) < count:

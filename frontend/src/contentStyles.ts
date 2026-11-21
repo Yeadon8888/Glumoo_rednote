@@ -3,6 +3,7 @@ export type ContentStyleId =
   | 'glumoo_1' | 'glumoo_2' | 'glumoo_3' | 'glumoo_4' | 'glumoo_5' | 'glumoo_6'
   | 'glumoo_7' | 'glumoo_8' | 'glumoo_9' | 'glumoo_10' | 'glumoo_11'
   | 'glumoo_12' | 'glumoo_13' | 'glumoo_14' | 'glumoo_15'
+  | 'glumoo_16' | 'glumoo_17' | 'glumoo_18' | 'glumoo_19' | 'glumoo_20' | 'glumoo_21' | 'glumoo_22'
   | 'pet_education' | 'pet_product' | 'pet_lifestyle'
 
 export const contentStyles: Array<{
@@ -28,6 +29,13 @@ export const contentStyles: Array<{
   { id: 'glumoo_13', name: '风格 13 · 俯拍生活图谱', description: '真实同平面生活物件关系' },
   { id: 'glumoo_14', name: '风格 14 · 高速瞬间定格', description: '清晰冻结动作与视线因果' },
   { id: 'glumoo_15', name: '风格 15 · 节日生活方式', description: '按主题变化的克制节日叙事' },
+  { id: 'glumoo_16', name: '风格 16 · 分层纸景剧场', description: '纸质景片前后错开，侧光在切边下投出细影' },
+  { id: 'glumoo_17', name: '风格 17 · 草木蓝晒印相', description: '以蓝晒纸上的植物轮廓、叶脉和叠印密度组织画面' },
+  { id: 'glumoo_18', name: '风格 18 · 纹玻璃折射静物', description: '利用纹玻璃的边缘、折射与透光投影，在一张连续实景中形成清晰区和变形区' },
+  { id: 'glumoo_19', name: '风格 19 · 爪垫仰拍肖像', description: '透过透明承托面从下方拍摄，让爪垫的接触形态、腹毛和重心呈现宠物当下的姿态' },
+  { id: 'glumoo_20', name: '风格 20 · 槟城五脚基街区纪实', description: '以槟城乔治市街屋的连续檐廊、柱间节奏和廊内外光差建立街区尺度，让人物和宠物的走动带出五脚基遮阳避雨的用途' },
+  { id: 'glumoo_21', name: '风格 21 · 砂拉越 Penan 编织日常', description: '以砂拉越 Penan 日用编品的篮沿、提耳、编纹与使用动作组织画面，近处看得见手艺，远处读得出器物用途' },
+  { id: 'glumoo_22', name: '风格 22 · 吉隆坡旧戏院书廊', description: '取意吉隆坡 REXKL 旧戏院改造后的书店，以挑高空间、木格书墙、错层通道与人物尺度构成画面' },
   { id: 'pet_education', name: '宠物科普', description: '误区、原理、观察信号与安全建议' },
   { id: 'pet_product', name: '产品种草', description: '从真实痛点到使用体验，克制转化' },
   { id: 'pet_lifestyle', name: '养宠日常', description: '有时间、场景和宠物小动作的故事' }

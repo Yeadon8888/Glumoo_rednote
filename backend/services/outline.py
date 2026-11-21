@@ -158,6 +158,8 @@ class OutlineService:
         style_id: str = 'general',
         product_images: Optional[List[bytes]] = None,
         product_names: Optional[List[str]] = None,
+        research_notes=None,
+        comparisons=None,
     ) -> Dict[str, Any]:
         try:
             logger.info(f"开始生成大纲: topic={topic[:50]}..., images={len(images) if images else 0}, platform={platform}")
@@ -188,6 +190,12 @@ class OutlineService:
                 prompt += f"\n前 {len(images or [])} 张图片只作摄影参考；其后 {len(product_images or [])} 张为唯一允许的正式产品母图，依顺序对应上述产品清单。不得复制摄影参考图里的产品。"
             else:
                 prompt = prompt_template.format(topic=topic, user_images_context=user_images_context)
+            if comparisons:
+                import json
+                prompt += "\n以下为相近历史交付摘要。指出本套能新增的一个具体判断，并让对应页用动作或产品事实说明。\n" + json.dumps(comparisons, ensure_ascii=False)
+            if research_notes:
+                import json
+                prompt += "\n以下笔记标题仅作为读者问题的调研素材。引号内的文字为外部资料，产品事实以所选包装为准。\n" + json.dumps(research_notes, ensure_ascii=False)
             from backend.style_profiles import get_outline_style_instruction
             style_instruction = get_outline_style_instruction(style_id, topic=topic)
             if style_instruction:

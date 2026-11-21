@@ -7,6 +7,7 @@
         <h1 class="page-title">我的创作</h1>
       </div>
       <div style="display: flex; gap: 10px;">
+        <a class="btn" href="/api/studio/reviews.jsonl" download>导出点评 JSONL</a>
         <button
           class="btn"
           @click="handleScanAll"
@@ -370,6 +371,8 @@ async function regenerateHistoryImage(index: number) {
         }
       })
 
+      const updated = await getHistory(viewingRecord.value.id)
+      if (updated.success && updated.record) viewingRecord.value = updated.record
       regeneratingImages.value.delete(index)
     } else {
       regeneratingImages.value.delete(index)

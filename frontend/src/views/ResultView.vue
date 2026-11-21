@@ -34,7 +34,7 @@
             @click="viewImage(image.url)"
           >
             <img
-              :src="image.url"
+              :src="image.url ? fullImageUrl(image.url) : undefined"
               :alt="`第 ${image.index + 1} 页`"
               style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s;"
             />
@@ -109,6 +109,11 @@ const store = useGeneratorStore()
 const regeneratingIndex = ref<number | null>(null)
 const error = ref<AppError | null>(null)
 
+function fullImageUrl(url: string) {
+  const original = new URL(url, window.location.origin)
+  original.searchParams.set('thumbnail','false')
+  return original.href
+}
 const viewImage = (url: string) => {
   const baseUrl = url.split('?')[0]
   window.open(baseUrl + '?thumbnail=false', '_blank')

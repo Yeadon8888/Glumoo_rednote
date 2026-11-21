@@ -51,6 +51,7 @@
             </button>
           </div>
 
+          <ReviewForm v-if="record.images.generated.some(Boolean)" :key="record.id" :id="record.id" :revision="record.review_revision"/>
           <!-- 文案内容展示区域 -->
           <div v-if="showContent && record.content" class="content-display">
             <div class="content-section">
@@ -102,7 +103,7 @@
             :class="{ 'regenerating': regeneratingImages.has(idx) }"
           >
             <img
-              :src="`/api/images/${record.images.task_id}/${img}`"
+              :src="`/api/images/${record.images.task_id}/${img}?thumbnail=false`"
               loading="lazy"
               decoding="async"
             />
@@ -124,6 +125,8 @@
 
           <div class="img-footer">
             <span>Page {{ idx + 1 }}</span>
+            <a v-if="record.native_files?.[img?.split('.')[0]]" class="download-link" target="_blank" rel="noopener"
+               :href="`/api/studio/native/${record.images.task_id}/${record.native_files[img.split('.')[0]]}`">模型原图</a>
             <span
               v-if="img"
               class="download-link"
@@ -139,6 +142,7 @@
 </template>
 
 <script setup lang="ts">
+import ReviewForm from './ReviewForm.vue'
 import { ref, computed } from 'vue'
 
 /**
@@ -153,6 +157,8 @@ import { ref, computed } from 'vue'
 
 // 定义记录类型
 interface ViewingRecord {
+  review_revision?: string
+  native_files?: Record<string,string>
   id: string
   title: string
   updated_at: string

@@ -13,13 +13,17 @@ from ..utils.image_compressor import compress_image
 logger = logging.getLogger(__name__)
 
 
+class ImageModelUnavailable(RuntimeError):
+    """The upstream explicitly rejected this model or reported temporary unavailability."""
+
+
 class ImageApiGenerator(ImageGeneratorBase):
     """Image API 生成器"""
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         logger.debug("初始化 ImageApiGenerator...")
-        self.base_url = config.get('base_url', 'https://api.example.com').rstrip('/').rstrip('/v1')
+        self.base_url = config.get('base_url', 'https://api.example.com').rstrip('/').removesuffix('/v1')
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
@@ -108,6 +112,11 @@ class ImageApiGenerator(ImageGeneratorBase):
             image_data = self._generate_via_images_api(
                 prompt, aspect_ratio, model, reference_image, reference_images
             )
+        trace = kwargs.get("generation_trace")
+        if trace is not None:
+            with Image.open(io.BytesIO(image_data)) as source:
+                trace.update(source=image_data, format=source.format.lower(),
+                             native_size=list(source.size), quality=self.quality)
         return self._normalize_output_aspect_ratio(image_data, aspect_ratio)
 
     def _collect_reference_image_uris(
@@ -145,6 +154,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         }
 
         size = self._generation_size(aspect_ratio)
+        if aspect_ratio == "3:4":
+            size = self.config.get("portrait_size", size)
         safe_prompt = (
             f"{prompt}\n\n输出构图要求：竖版 {aspect_ratio}；所有标题、正文、产品和关键信息"
             f"都放在中央 {aspect_ratio} 安全区内，四周保留可裁切留白。"
@@ -165,7 +176,7 @@ class ImageApiGenerator(ImageGeneratorBase):
             }
             files = []
             for index, image in enumerate(all_reference_images):
-                compressed = compress_image(image, max_size_kb=200)
+                compressed = compress_image(image, max_size_kb=1500 if self.quality == "high" else 200)
                 files.append((
                     "image[]",
                     (
@@ -197,6 +208,18 @@ class ImageApiGenerator(ImageGeneratorBase):
         if response.status_code != 200:
             error_detail = response.text[:500]
             logger.error(f"Image API 请求失败: status={response.status_code}, error={error_detail}")
+            code = ""
+            try:
+                error = response.json().get("error")
+                if isinstance(error, dict):
+                    code = error.get("code", "")
+            except ValueError:
+                pass
+            if code not in {"insufficient_quota", "insufficient_user_quota", "content_policy_violation"} and (
+                response.status_code in {429, 500, 502, 503, 504}
+                or code in {"model_not_found", "model_not_available", "no_available_channel"}
+            ):
+                raise ImageModelUnavailable(f"{model}: HTTP {response.status_code} {code}")
             raise Exception(
                 f"Image API 请求失败 (状态码: {response.status_code})\n"
                 f"错误详情: {error_detail}\n"

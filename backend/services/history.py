@@ -250,7 +250,7 @@ class HistoryService:
 
         # 更新大纲内容（支持修改大纲）
         if outline is not None:
-            record["outline"] = outline
+            record["outline"] = {**(record.get("outline") or {}), **outline}
 
         # 更新图片信息
         if images is not None:

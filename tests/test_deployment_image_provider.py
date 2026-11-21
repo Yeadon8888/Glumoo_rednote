@@ -14,7 +14,8 @@ def test_cpa_is_the_active_deployment_image_provider():
     assert provider["base_url"] == (
         "https://cliproxyapi-production-2dde.up.railway.app/v1"
     )
-    assert provider["model"] == "gpt-image-2"
+    assert provider["model_order"][0] == provider["model"] == "gpt-image-2.6-sunburst"
+    assert provider["quality"] == "high"
     assert provider["endpoint_type"] == "/v1/images/generations"
     assert provider["edit_endpoint"] == "/v1/images/edits"
     assert provider["response_format"] == "b64_json"

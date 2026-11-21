@@ -226,6 +226,14 @@ class ContentService:
             if isinstance(tags, str):
                 tags = [t.strip() for t in tags.split(',')]
 
+            from backend.style_profiles import is_glumoo_style
+            if platform == "xiaohongshu" and is_glumoo_style(style_id):
+                disclosure = "场景图片由 AI 生成，仅作品牌创意展示。"
+                if disclosure not in copywriting:
+                    copywriting = copywriting.rstrip() + "\n\n" + disclosure
+                if not any(t.lstrip("#").upper() == "NAGLUMOO" for t in tags):
+                    tags.append("NAGLUMOO")
+
             logger.info(f"内容生成完成: {len(titles)} 个标题, {len(tags)} 个标签")
 
             return {

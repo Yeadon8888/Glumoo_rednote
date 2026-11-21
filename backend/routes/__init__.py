@@ -38,6 +38,8 @@ def create_api_blueprint():
     api_bp.register_blueprint(create_history_blueprint())
     api_bp.register_blueprint(create_config_blueprint())
     api_bp.register_blueprint(create_content_blueprint())
+    from .studio_routes import studio
+    api_bp.register_blueprint(studio)
 
     return api_bp
 

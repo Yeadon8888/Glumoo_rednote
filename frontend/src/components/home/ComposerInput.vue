@@ -89,10 +89,12 @@
 
     <!-- 工具栏 -->
     <div class="style-section">
-      <div class="style-heading">选择内容风格</div>
+      <div class="style-heading">选择内容风格
+        <button type="button" class="tool-btn" @click="toggleFavorite">{{favorites.includes(store.contentStyle)?'移出常用':'设为常用'}}</button>
+      </div>
       <div class="style-grid">
         <button
-          v-for="style in contentStyles"
+          v-for="style in sortedStyles"
           :key="style.id"
           type="button"
           class="style-card"
@@ -100,13 +102,14 @@
           :disabled="loading"
           @click="store.setContentStyle(style.id)"
         >
-          <span class="style-name">{{ style.name }}</span>
+          <span class="style-name">{{ favorites.includes(style.id) ? '★ ' : '' }}{{ style.name }}</span>
           <span v-if="style.badge" class="style-badge">{{ style.badge }}</span>
           <span class="style-description">{{ style.description }}</span>
         </button>
       </div>
       <div v-if="store.contentStyle.startsWith('glumoo')" class="glumoo-sop-hint">
-        参考图可留空：系统会按主题和风格从参考库动态选择 6 张；如手动上传则需恰好 6 张。产品图仍从品牌素材库独立选择。
+        留空时按主题和风格从参考库匹配六张图，也可手动上传六张。产品从品牌素材库独立选择。
+        <ResearchPanel ref="researchPanel" :topic="modelValue" :style-id="store.contentStyle" :disabled="loading"/>
       </div>
     </div>
 
@@ -161,7 +164,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { computed, ref, onUnmounted } from 'vue'
+import ResearchPanel from './ResearchPanel.vue'
+const researchPanel=ref<InstanceType<typeof ResearchPanel>|null>(null)
+const favorites=ref<string[]>([])
+try {const saved=JSON.parse(localStorage.getItem('glumoo.favoriteStyles')||'[]');if(Array.isArray(saved))favorites.value=saved.filter(x=>typeof x==='string')} catch {}
+const sortedStyles=computed(()=>[...contentStyles].sort((a,b)=>Number(favorites.value.includes(b.id))-Number(favorites.value.includes(a.id))))
+function toggleFavorite(){const id=store.contentStyle;favorites.value=favorites.value.includes(id)?favorites.value.filter(x=>x!==id):[...favorites.value,id];localStorage.setItem('glumoo.favoriteStyles',JSON.stringify(favorites.value))}
+
 import { contentStyles } from '../../contentStyles'
 import {
   brandAssetToFile,
@@ -380,6 +390,7 @@ onUnmounted(() => {
 
 // 暴露方法给父组件
 defineExpose({
+  researchPanel,
   clearPreviews
 })
 </script>

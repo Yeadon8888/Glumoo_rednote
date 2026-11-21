@@ -62,12 +62,14 @@ def create_outline_blueprint():
                 )
 
             from backend.style_profiles import is_glumoo_style
+            auto_choices = []
             if is_glumoo_style(style_id):
                 if not product_images:
                     return api_error_response(validation_error("缺少产品素材", "请返回首页选择本次实际使用的产品。"))
                 if not images:
-                    from backend.services.glumoo_reference_library import select_glumoo_references
-                    images = select_glumoo_references(topic, style_id)
+                    from backend.services.visual_research import pick_references, reference_bytes
+                    auto_choices = pick_references(topic, style_id)
+                    images = reference_bytes([item["id"] for item in auto_choices])
                     if len(images) != 6:
                         return api_error_response(
                             validation_error(
@@ -89,9 +91,20 @@ def create_outline_blueprint():
             # 调用大纲生成服务
             logger.info(f"🔄 开始生成大纲，主题: {topic[:50]}...")
             outline_service = get_outline_service()
+            from backend.services.studio import research_by_id
+            from hashlib import sha256
+            fields = request.form if request.form else (request.get_json(silent=True) or {})
+            research_id = fields.get("research_id")
+            study = research_by_id(research_id) if research_id else None
+            if research_id and (not study or study["topic"] != topic.strip()):
+                return api_error_response(validation_error("调研与当前主题不匹配", "请重新调研当前主题"))
+            notes = [n["title"] for n in study["notes"] if n["id"] in study["selected"]] if study else []
+            from backend.services.studio import comparable_works
+            prior = comparable_works(topic, product_names) if is_glumoo_style(style_id) else []
             result = outline_service.generate_outline(
                 topic, images if images else None, platform, style_id,
-                product_images=product_images, product_names=product_names
+                product_images=product_images, product_names=product_names, **({"research_notes": notes} if notes else {}),
+                **({"comparisons": prior} if prior else {})
             )
 
             # 记录结果
@@ -103,6 +116,14 @@ def create_outline_blueprint():
                     if conflict:
                         return api_error_response(validation_error("生成的大纲包含未选中的产品", conflict))
                 logger.info(f"✅ 大纲生成成功，耗时 {elapsed:.2f}s，共 {len(result.get('pages', []))} 页")
+                if auto_choices and result.get("pages"):
+                    result["pages"][0]["reference_choices"] = [item["id"] for item in auto_choices]
+                result["context"] = {
+                    "reference_choices": auto_choices,
+                    "style": style_id, "products": product_names,
+                    "reference_hashes": [sha256(i).hexdigest() for i in images or []],
+                    "research": study, "comparable_history": prior, "sop_version": "2026-11-21",
+                }
                 return jsonify(result), 200
             else:
                 logger.error(f"❌ 大纲生成失败: {result.get('error', '未知错误')}")

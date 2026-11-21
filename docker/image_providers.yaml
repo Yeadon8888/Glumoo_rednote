@@ -15,18 +15,20 @@ providers:
     base_url: https://cliproxyapi-production-2dde.up.railway.app/v1
     endpoint_type: /v1/images/generations
     edit_endpoint: /v1/images/edits
-    model: gpt-image-2
+    model: gpt-image-2.6-sunburst
+    model_order: [gpt-image-2.6-sunburst, gpt-image-2.6-flare, gpt-image-2]
+    portrait_size: 1536x2048
     default_aspect_ratio: "3:4"
     image_size: 1024x1536
     output_size: 1536x2048
-    quality: low
+    quality: high
     response_format: b64_json
     output_format: png
     high_concurrency: true
     max_concurrent: 5
     min_free_storage_mb: 96
     orphan_grace_seconds: 600
-    create_retry_count: 4
+    create_retry_count: 0
     create_retry_base_delay: 12
 
   # TokensFactory synchronous GPT Image 2 series API

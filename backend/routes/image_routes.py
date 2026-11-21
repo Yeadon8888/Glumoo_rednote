@@ -93,8 +93,21 @@ def create_image_blueprint():
             from backend.style_profiles import is_glumoo_style
             if is_glumoo_style(style_id):
                 if not user_images:
-                    from backend.services.glumoo_reference_library import select_glumoo_references
-                    user_images = select_glumoo_references(user_topic, style_id)
+                    ids = pages[0].get("reference_choices")
+                    context = {}
+                    if record_id and Path(record_id).name == record_id:
+                        from backend.services.history import get_history_service
+                        record = get_history_service().get_record(record_id, sync_images=False) or {}
+                        context = (record.get("outline") or {}).get("context") or {}
+                    if not ids and context.get("reference_choices"):
+                        ids = [item["id"] for item in context["reference_choices"]]
+                    if ids:
+                        from backend.services.visual_research import reference_bytes
+                        user_images = reference_bytes(ids)
+                    elif not context.get("sop_version"):
+                        # Retain deterministic recovery for records created before reference IDs existed.
+                        from backend.services.glumoo_reference_library import select_glumoo_references
+                        user_images = select_glumoo_references(user_topic, style_id)
                     if len(user_images) != 6:
                         return api_error_response(
                             validation_error(
@@ -198,6 +211,10 @@ def create_image_blueprint():
         """
         try:
             logger.debug(f"获取图片: {task_id}/{filename}")
+
+            from pathlib import Path
+            if task_id in (".", "..") or Path(filename).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+                return jsonify({"error": "图片不存在"}), 404
 
             # 检查是否请求缩略图
             thumbnail = request.args.get('thumbnail', 'true').lower() == 'true'

@@ -29,6 +29,7 @@
         <button type="button" @click="clearFeedback" aria-label="关闭提示">×</button>
       </div>
 
+      <StudioSettings />
       <!-- 文本生成配置 -->
       <div class="card">
         <div class="section-header">
@@ -115,6 +116,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import StudioSettings from '../components/settings/StudioSettings.vue'
 import ProviderTable from '../components/settings/ProviderTable.vue'
 import ProviderModal from '../components/settings/ProviderModal.vue'
 import ImageProviderModal from '../components/settings/ImageProviderModal.vue'
