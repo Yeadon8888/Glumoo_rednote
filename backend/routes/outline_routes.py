@@ -8,6 +8,7 @@
 import time
 import base64
 import logging
+import json
 from flask import Blueprint, request, jsonify
 from backend.services.outline import get_outline_service
 from .utils import (
@@ -61,6 +62,15 @@ def create_outline_blueprint():
                     context={"endpoint": "/api/outline"},
                 )
 
+            from backend.services.tikhub import note_references
+            fields = request.form if request.mimetype == "multipart/form-data" else (request.get_json(silent=True) or {})
+            try:
+                raw_notes = (json.loads(fields.get("note_references", "[]"))
+                             if request.mimetype == "multipart/form-data" else fields.get("note_references", []))
+                linked_notes = note_references(raw_notes)
+            except ValueError as exc:
+                return api_error_response(validation_error("参考笔记无效", str(exc)))
+
             from backend.style_profiles import is_glumoo_style
             auto_choices = []
             if is_glumoo_style(style_id):
@@ -93,12 +103,12 @@ def create_outline_blueprint():
             outline_service = get_outline_service()
             from backend.services.studio import research_by_id
             from hashlib import sha256
-            fields = request.form if request.form else (request.get_json(silent=True) or {})
             research_id = fields.get("research_id")
             study = research_by_id(research_id) if research_id else None
             if research_id and (not study or study["topic"] != topic.strip()):
                 return api_error_response(validation_error("调研与当前主题不匹配", "请重新调研当前主题"))
             notes = [n["title"] for n in study["notes"] if n["id"] in study["selected"]] if study else []
+            notes.extend({k: n[k] for k in ("title", "excerpt")} for n in linked_notes)
             from backend.services.studio import comparable_works
             prior = comparable_works(topic, product_names) if is_glumoo_style(style_id) else []
             result = outline_service.generate_outline(
@@ -122,7 +132,7 @@ def create_outline_blueprint():
                     "reference_choices": auto_choices,
                     "style": style_id, "products": product_names,
                     "reference_hashes": [sha256(i).hexdigest() for i in images or []],
-                    "research": study, "comparable_history": prior, "sop_version": "2026-11-21",
+                    "note_references": linked_notes, "research": study, "comparable_history": prior, "sop_version": "2026-11-21",
                 }
                 return jsonify(result), 200
             else:

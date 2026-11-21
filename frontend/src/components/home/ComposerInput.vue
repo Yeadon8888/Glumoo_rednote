@@ -14,12 +14,24 @@
         @input="handleInput"
         class="composer-textarea"
         placeholder="输入主题，例如：金毛夏日消暑攻略..."
-        @keydown.enter.prevent="handleEnter"
         :disabled="loading"
         rows="1"
       ></textarea>
     </div>
 
+    <NoteReferences ref="notePanel" :disabled="loading" />
+    <div class="style-section">
+      <label class="style-heading" for="reference-style">参考风格</label>
+      <div class="style-controls">
+        <select id="reference-style" v-model="chosenStyle" :disabled="loading">
+          <option v-for="style in sortedStyles" :key="style.id" :value="style.id">{{ favorites.includes(style.id) ? '★ ' : '' }}{{ style.name }}</option>
+        </select>
+        <button type="button" class="tool-btn" @click="toggleFavorite">{{favorites.includes(chosenStyle)?'移出常用':'设为常用'}}</button>
+      </div>
+      <span class="style-description">{{ selectedStyle?.description }}</span>
+      <ResearchPanel ref="researchPanel" :topic="modelValue" :style-id="chosenStyle" :disabled="loading"
+        :upload-count="uploadedImages.length" />
+    </div>
     <!-- 已上传图片预览 -->
     <div v-if="uploadedImages.length > 0" class="uploaded-images-preview">
       <div
@@ -57,6 +69,7 @@
           type="button"
           class="asset-card"
           :class="{ selected: selectedProductNames.has(asset.filename) }"
+          :disabled="loading"
           @click="useBrandAsset(asset)"
         >
           <img :src="asset.url" alt="品牌素材" />
@@ -85,32 +98,6 @@
           <span class="option-desc">严格模仿参考图的布局结构，只替换文字内容（推荐用于小红书爆款图片）</span>
         </span>
       </label>
-    </div>
-
-    <!-- 工具栏 -->
-    <div class="style-section">
-      <div class="style-heading">选择内容风格
-        <button type="button" class="tool-btn" @click="toggleFavorite">{{favorites.includes(store.contentStyle)?'移出常用':'设为常用'}}</button>
-      </div>
-      <div class="style-grid">
-        <button
-          v-for="style in sortedStyles"
-          :key="style.id"
-          type="button"
-          class="style-card"
-          :class="{ active: store.contentStyle === style.id }"
-          :disabled="loading"
-          @click="store.setContentStyle(style.id)"
-        >
-          <span class="style-name">{{ favorites.includes(style.id) ? '★ ' : '' }}{{ style.name }}</span>
-          <span v-if="style.badge" class="style-badge">{{ style.badge }}</span>
-          <span class="style-description">{{ style.description }}</span>
-        </button>
-      </div>
-      <div v-if="store.contentStyle.startsWith('glumoo')" class="glumoo-sop-hint">
-        留空时按主题和风格从参考库匹配六张图，也可手动上传六张。产品从品牌素材库独立选择。
-        <ResearchPanel ref="researchPanel" :topic="modelValue" :style-id="store.contentStyle" :disabled="loading"/>
-      </div>
     </div>
 
     <!-- 工具栏 -->
@@ -149,7 +136,7 @@
         <button
           class="btn btn-primary generate-btn"
           @click="$emit('generate')"
-          :disabled="!modelValue.trim() || loading"
+          :disabled="!modelValue.trim() || loading || !!preparationHint"
         >
           <span v-if="loading" class="spinner-sm"></span>
           <span>{{ loading ? '生成中' : '生成大纲' }}</span>
@@ -157,6 +144,7 @@
       </div>
     </div>
 
+    <p v-if="preparationHint && !loading" class="style-description" role="status">{{ preparationHint }}</p>
     <div v-if="loading" class="loading-hint" role="status" aria-live="polite">
       请稍后，这一步大概要 15-30 秒左右。
     </div>
@@ -166,6 +154,8 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted } from 'vue'
 import ResearchPanel from './ResearchPanel.vue'
+import NoteReferences from './NoteReferences.vue'
+const notePanel = ref<InstanceType<typeof NoteReferences>|null>(null)
 const researchPanel=ref<InstanceType<typeof ResearchPanel>|null>(null)
 const favorites=ref<string[]>([])
 try {const saved=JSON.parse(localStorage.getItem('glumoo.favoriteStyles')||'[]');if(Array.isArray(saved))favorites.value=saved.filter(x=>typeof x==='string')} catch {}
@@ -227,6 +217,16 @@ const layoutMimicMode = ref(false)
 // 平台选择（从 store 同步初始值，确保与实际发送的值一致）
 import { useGeneratorStore } from '../../stores/generator'
 const store = useGeneratorStore()
+const chosenStyle = computed({get: () => store.contentStyle, set: value => store.setContentStyle(value)})
+const selectedStyle = computed(() => contentStyles.find(style => style.id === chosenStyle.value))
+const preparationHint = computed(() => {
+  if (notePanel.value?.pending) return '请先添加正在编辑的笔记，或清空输入框。'
+  if (researchPanel.value?.working) return '请先完成当前的调研或选图。'
+  if (chosenStyle.value.startsWith('glumoo') && uploadedImages.value.length !== 6 &&
+      (uploadedImages.value.length > 0 || researchPanel.value?.picks.length !== 6))
+    return '请先匹配、从库中选择，或上传六张参考图。'
+  return ''
+})
 const selectedPlatform = ref(store.platform || 'xiaohongshu')
 
 /**
@@ -236,14 +236,6 @@ function handleInput(event: Event) {
   const target = event.target as HTMLTextAreaElement
   emit('update:modelValue', target.value)
   adjustHeight()
-}
-
-/**
- * 处理回车键
- */
-function handleEnter(e: KeyboardEvent) {
-  if (e.shiftKey) return // 允许 Shift+Enter 换行
-  emit('generate')
 }
 
 /**
@@ -391,6 +383,8 @@ onUnmounted(() => {
 // 暴露方法给父组件
 defineExpose({
   researchPanel,
+  notePanel,
+  preparationHint,
   clearPreviews
 })
 </script>
@@ -479,39 +473,8 @@ defineExpose({
   font-weight: 600;
 }
 
-.style-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.style-card {
-  min-height: 76px;
-  padding: 10px;
-  border: 1px solid #ececf0;
-  border-radius: 12px;
-  background: #fafafa;
-  color: var(--text-main);
-  text-align: left;
-  cursor: pointer;
-}
-
-.style-card.active {
-  border-color: var(--primary);
-  background: rgba(255, 36, 66, 0.06);
-  box-shadow: 0 0 0 1px rgba(255, 36, 66, 0.12);
-}
-
-.style-name {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.style-badge {
-  float: right;
-  color: var(--primary);
-  font-size: 10px;
-}
+.style-controls {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.style-controls select {padding:8px 12px;border-radius:8px;border:1px solid var(--border-color,#ddd);font:inherit;max-width:100%}
 
 .style-description {
   display: block;
@@ -519,12 +482,6 @@ defineExpose({
   color: var(--text-sub);
   font-size: 11px;
   line-height: 1.35;
-}
-
-@media (max-width: 760px) {
-  .style-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 /* 输入区域 */

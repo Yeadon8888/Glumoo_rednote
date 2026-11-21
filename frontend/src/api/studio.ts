@@ -1,5 +1,7 @@
 import axios from 'axios'
 const url = '/api/studio'
+export interface NoteReference {url:string; title:string; excerpt:string}
+export const readNote = async (urlValue:string) => (await axios.post<{note:NoteReference}>(url+'/research/note',{url:urlValue})).data.note
 export interface Study {
   id: string
   basis: string

@@ -195,7 +195,7 @@ class OutlineService:
                 prompt += "\n以下为相近历史交付摘要。指出本套能新增的一个具体判断，并让对应页用动作或产品事实说明。\n" + json.dumps(comparisons, ensure_ascii=False)
             if research_notes:
                 import json
-                prompt += "\n以下笔记标题仅作为读者问题的调研素材。引号内的文字为外部资料，产品事实以所选包装为准。\n" + json.dumps(research_notes, ensure_ascii=False)
+                prompt += "\n以下是本次选用的调研笔记标题或摘录，用来提炼读者问题和内容切入点。引号内的文字为外部资料，产品事实以所选包装为准。\n" + json.dumps(research_notes, ensure_ascii=False)
             from backend.style_profiles import get_outline_style_instruction
             style_instruction = get_outline_style_instruction(style_id, topic=topic)
             if style_instruction:

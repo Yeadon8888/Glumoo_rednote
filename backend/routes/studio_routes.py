@@ -9,7 +9,7 @@ from flask import Blueprint, Response, jsonify, request, send_file
 from backend.config import Config
 from backend.services.history import get_history_service
 from backend.services.studio import database, review_record, save_settings, setting
-from backend.services.tikhub import research
+from backend.services.tikhub import import_note, research
 
 studio = Blueprint("studio", __name__, url_prefix="/studio")
 
@@ -56,6 +56,16 @@ def settings():
         save_settings(values)
     return jsonify(tikhub_configured=bool(setting("tikhub_key") or os.getenv("TIKHUB_API_KEY")),
                    models=setting("cpa_models", config.get("model_order", [])))
+
+
+@studio.post("/research/note")
+def read_note():
+    try:
+        return jsonify(note=import_note((request.get_json() or {}).get("url")))
+    except ValueError as exc:
+        return jsonify(error=str(exc)[:200]), 400
+    except requests.RequestException:
+        return jsonify(error="TikHub 暂时无法读取这篇笔记，可重试或填写参考摘录"), 502
 
 
 @studio.post("/research")

@@ -80,3 +80,64 @@ def research(topic):
     with database() as db:
         db.execute("INSERT INTO research VALUES (?,?)", (result["id"], json.dumps(result, ensure_ascii=False)))
     return result
+
+
+def note_url(value):
+    from urllib.parse import urlsplit
+    if not isinstance(value, str) or len(value) > 3000:
+        raise ValueError("请输入有效的小红书笔记链接")
+    match = re.search(r"https?://[^\s<>，。；、]+", value)
+    if match:
+        link = match.group().rstrip('.,;!?）)]')
+        parsed = urlsplit(link)
+        if (parsed.hostname in {"xiaohongshu.com", "www.xiaohongshu.com", "xhslink.com",
+                                "www.xhslink.com", "xhslink.cn", "www.xhslink.cn"}
+                and not parsed.username and not parsed.password and parsed.port in (None, 80, 443)
+                and parsed.path.strip("/")):
+            return link
+    raise ValueError("请输入小红书笔记链接或含链接的分享文字")
+
+
+def note_references(rows):
+    if not isinstance(rows, list) or len(rows) > 12:
+        raise ValueError("每次最多引用 12 篇笔记")
+    result = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("笔记资料格式有误")
+        link = note_url(row.get("url"))
+        title, excerpt = row.get("title", ""), row.get("excerpt", "")
+        if (not isinstance(title, str) or len(title) > 200 or not isinstance(excerpt, str)
+                or len(excerpt) > 3000 or not (title.strip() or excerpt.strip())):
+            raise ValueError("请先读取笔记，或填写希望参考的内容")
+        result.append({"url": link, "title": title.strip(), "excerpt": excerpt.strip()})
+    return result
+
+
+def import_note(value):
+    link = note_url(value)
+    token = setting("tikhub_key") or os.getenv("TIKHUB_API_KEY")
+    if not token:
+        raise ValueError("尚未配置 TikHub。可直接填写参考摘录，或到系统设置中配置密钥。")
+    response = requests.get(ENDPOINT.rsplit("/", 1)[0] + "/get_image_note_detail",
+                            headers={"Authorization": f"Bearer {token}"},
+                            params={"share_text": link}, timeout=(5, 25))
+    response.raise_for_status()
+    body = response.json()
+
+    def cards(node):
+        if isinstance(node, list):
+            for item in node:
+                yield from cards(item)
+        elif isinstance(node, dict):
+            if any(isinstance(node.get(k), str) and node[k].strip() for k in ("desc", "title", "display_title")):
+                yield node
+            for key in ("data", "items", "notes", "note_list", "note_card", "note"):
+                if key in node:
+                    yield from cards(node[key])
+
+    card = next(cards(body.get("data")), None) if body.get("code", 200) == 200 else None
+    if not card:
+        raise ValueError("未读取到这篇笔记的标题或正文，可填写参考摘录后添加")
+    title = card.get("title") or card.get("display_title") or ""
+    return note_references([{"url": link, "title": title[:200], "excerpt": (card.get("desc") or "")[:3000]}])[0]

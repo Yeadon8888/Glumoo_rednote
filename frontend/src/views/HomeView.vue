@@ -124,7 +124,7 @@ function handlePlatformChange(platform: string) {
  * 生成大纲
  */
 async function handleGenerate() {
-  if (!topic.value.trim()) return
+  if (!topic.value.trim() || loading.value || composerRef.value?.preparationHint) return
 
   if (store.contentStyle.startsWith('glumoo') && uploadedImageFiles.value.length > 0 && uploadedImageFiles.value.length !== 6) {
     error.value = inputError(
@@ -147,8 +147,8 @@ async function handleGenerate() {
 
   try {
     const panel=composerRef.value?.researchPanel
-    const autoMatch=store.contentStyle.startsWith('glumoo') && !uploadedImageFiles.value.length
-    const imageFiles = autoMatch && panel ? await panel.selectedFiles() : uploadedImageFiles.value
+    const useLibrary=!!panel?.picks.length && !uploadedImageFiles.value.length
+    const imageFiles = useLibrary && panel ? await panel.selectedFiles() : uploadedImageFiles.value
 
     const result = await generateOutline(
       topic.value.trim(),
@@ -156,7 +156,8 @@ async function handleGenerate() {
       store.platform,
       store.contentStyle,
       selectedProductFiles.value,
-      panel?.study?.id
+      panel?.study?.id,
+      composerRef.value?.notePanel?.notes
     )
 
     if (result.success && result.pages) {
@@ -172,8 +173,8 @@ async function handleGenerate() {
           {
             raw: result.outline || '',
             pages: result.pages, context: {
-              ...result.context, reference_source: autoMatch ? 'reviewed_library' : 'manual',
-              reference_choices: autoMatch ? panel?.picks : undefined
+              ...result.context, reference_source: useLibrary ? 'reviewed_library' : 'manual',
+              reference_choices: useLibrary ? panel?.picks : undefined
             }
           }
         )
