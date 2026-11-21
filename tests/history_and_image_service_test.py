@@ -200,3 +200,13 @@ def test_deleting_one_record_preserves_shared_original(tmp_path):
     assert store.list_records()["total"] == 1
     assert store.get_record(second)
     assert (task / "0.png").read_bytes() == b"original"
+
+
+def test_completed_editorial_cover_is_the_history_thumbnail(tmp_path):
+    service = make_history_service(tmp_path)
+    pages = [{"type": "content", "index": 0}, {"type": "cover", "index": 1}]
+    record = service.create_record("散步", {"pages": pages}, "task_cover")
+    service.merge_generated_image(record, "task_cover", 0, "0.png")
+    assert service.get_record(record)["thumbnail"] == "0.png"
+    service.merge_generated_image(record, "task_cover", 1, "1.png")
+    assert service.get_record(record)["thumbnail"] == "1.png"

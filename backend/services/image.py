@@ -7,6 +7,8 @@ import shutil
 import threading
 import time
 import uuid
+from io import BytesIO
+from pathlib import Path
 from concurrent.futures import (
     FIRST_COMPLETED,
     ThreadPoolExecutor,
@@ -378,7 +380,6 @@ class ImageService:
             os.makedirs(task_dir, exist_ok=True)
             self._save_image(image_data, filename, task_dir)
             if self.provider_config.get("type") == "image_api" and trace:
-                from pathlib import Path
                 from hashlib import sha256
                 native_dir = Path(task_dir) / "native"
                 native_dir.mkdir(exist_ok=True)
@@ -610,19 +611,13 @@ class ImageService:
                     "message": "六张正文已完成，正在从证明图派生封面...",
                     "current": 7, "total": total, "phase": "cover",
                 }}
+                index = cover_page["index"]
                 try:
-                    from backend.services.glumoo_postprocess import render_cover
-                    index = cover_page["index"]
-                    filename = f"{index}.png"
-                    proof_path = os.path.join(task_dir, "_cover_source.png")
-                    cover_path = os.path.join(task_dir, filename)
-                    render_cover(proof_path, cover_path, user_topic)
-                    with open(cover_path, "rb") as rendered_cover:
-                        self._save_image(rendered_cover.read(), filename, task_dir)
-                    if record_id:
-                        self.history_service.merge_generated_image(
-                            record_id, task_id, index, filename, total_count=total
-                        )
+                    index, success, filename, error = self._derive_glumoo_cover(
+                        task_id, cover_page, user_topic, record_id, total
+                    )
+                    if not success:
+                        raise ValueError(error)
                     self._remember_generated(generated_images, index, filename, total)
                     self._task_states[task_id]["generated"][index] = filename
                     yield {"event": "complete", "data": {
@@ -1002,33 +997,30 @@ class ImageService:
         total_count: Optional[int],
     ) -> Tuple[int, bool, Optional[str], Optional[str]]:
         """Rebuild a Glumoo cover from an accepted body proof without another model call."""
-        from backend.services.glumoo_postprocess import render_cover
+        from backend.services.glumoo_postprocess import cover_copy, render_cover
 
         task_dir = self._get_task_dir(task_id)
-        proof_path = os.path.join(task_dir, "_cover_source.png")
-        if not os.path.exists(proof_path):
-            task_state = self._task_states.get(task_id, {})
-            pages = task_state.get("pages", [])
-            generated = task_state.get("generated", [])
-            for body_page in pages:
-                body_index = body_page.get("index")
-                if body_page.get("type") == "cover" or not isinstance(body_index, int):
-                    continue
-                filename = generated[body_index] if body_index < len(generated) else f"{body_index}.png"
-                candidate = os.path.join(task_dir, filename or f"{body_index}.png")
-                if os.path.exists(candidate):
-                    proof_path = candidate
-                    break
-
+        proof_path = Path(task_dir) / "_cover_source.png"
         index = page.get("index", 0)
-        if not os.path.exists(proof_path):
-            return index, False, None, "缺少已通过的正文证明图，请先重试正文。"
+        state = self._task_states.get(task_id, {})
+        if not proof_path.is_file():
+            # A previously typeset body includes its own caption. Only use an original.
+            proof_index = next((p["index"] for p in state.get("pages", [])
+                                if p.get("type") != "cover"), 0)
+            native_dir = Path(task_dir) / "native"
+            proof_path = next((native_dir / f"{proof_index}.{ext}" for ext in ("png", "jpg", "jpeg", "webp")
+                               if (native_dir / f"{proof_index}.{ext}").is_file()), None)
+            if proof_path is None:
+                return index, False, None, "缺少未排字的正文底图，请先重试第 1 张正文。"
 
         filename = f"{index}.png"
-        cover_path = os.path.join(task_dir, filename)
-        render_cover(proof_path, cover_path, user_topic)
-        with open(cover_path, "rb") as rendered_cover:
-            self._save_image(rendered_cover.read(), filename, task_dir)
+        cover = BytesIO()
+        title, subtitle = cover_copy(page.get("content", ""), user_topic, state.get("product_names") or [])
+        try:
+            render_cover(proof_path, cover, title, subtitle)
+        except ValueError as error:
+            return index, False, None, str(error)
+        self._save_image(cover.getvalue(), filename, task_dir)
         if record_id:
             self.history_service.merge_generated_image(
                 record_id, task_id, index, filename, total_count=total_count
@@ -1111,7 +1103,7 @@ class ImageService:
             style_id = task_state.get("style_id", "general")
 
         from backend.style_profiles import is_glumoo_style
-        if is_glumoo_style(style_id) and page.get("type") == "cover":
+        if page.get("type") == "cover" and (is_glumoo_style(style_id) or (Path(task_dir) / "_cover_source.png").is_file()):
             index, success, filename, error = self._derive_glumoo_cover(
                 task_id, page, user_topic, record_id, total_count
             )
@@ -1137,6 +1129,8 @@ class ImageService:
             if is_glumoo_style(style_id) and page.get("type") != "cover":
                 from backend.services.glumoo_postprocess import render_body_text
                 image_path = os.path.join(task_dir, filename)
+                if index == 0:
+                    shutil.copyfile(image_path, os.path.join(task_dir, "_cover_source.png"))
                 render_body_text(image_path, page.get("content", ""))
                 with open(image_path, "rb") as rendered_body:
                     self._save_image(rendered_body.read(), filename, task_dir)
@@ -1261,6 +1255,8 @@ class ImageService:
                 if is_glumoo_style(style_id) and page.get("type") != "cover":
                     from backend.services.glumoo_postprocess import render_body_text
                     image_path = os.path.join(task_dir, filename)
+                    if index == 0:
+                        shutil.copyfile(image_path, os.path.join(task_dir, "_cover_source.png"))
                     render_body_text(image_path, page.get("content", ""))
                     with open(image_path, "rb") as rendered_body:
                         self._save_image(rendered_body.read(), filename, task_dir)
@@ -1292,7 +1288,7 @@ class ImageService:
         from backend.style_profiles import is_glumoo_style
         glumoo_cover_pages = (
             [page for page in pages if page.get("type") == "cover"]
-            if is_glumoo_style(style_id) else []
+            if is_glumoo_style(style_id) or (Path(task_dir) / "_cover_source.png").is_file() else []
         )
         retry_pages = [page for page in pages if page not in glumoo_cover_pages]
 

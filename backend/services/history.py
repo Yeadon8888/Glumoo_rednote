@@ -360,7 +360,7 @@ class HistoryService:
             total_count,
         )
         status = HistoryImageMerger.compute_status(generated, total_count)
-        thumbnail = HistoryImageMerger.first_image(generated)
+        thumbnail = HistoryImageMerger.cover_thumbnail(generated, record.get("outline", {}).get("pages", []))
 
         return self.update_record(
             record_id,
@@ -396,7 +396,7 @@ class HistoryService:
             total_count,
         )
         status = HistoryImageMerger.compute_status(generated, total_count)
-        thumbnail = HistoryImageMerger.first_image(generated)
+        thumbnail = HistoryImageMerger.cover_thumbnail(generated, record.get("outline", {}).get("pages", []))
 
         if (
             generated == existing_generated
@@ -650,7 +650,7 @@ class HistoryService:
                             "generated": merged_images
                         },
                         status=status,
-                        thumbnail=HistoryImageMerger.first_image(merged_images)
+                        thumbnail=HistoryImageMerger.cover_thumbnail(merged_images, record.get("outline", {}).get("pages", []))
                     )
 
                     return {

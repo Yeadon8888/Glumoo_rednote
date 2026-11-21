@@ -88,3 +88,21 @@ def test_cover_read_uses_its_own_task_directory(tmp_path, monkeypatch):
     assert any(event["event"] == "complete" for event in events)
     finish = next(event["data"] for event in events if event["event"] == "finish")
     assert finish["success"] is True
+
+
+def test_glumoo_cover_retry_uses_clean_photo_and_edited_cover_after_restart(tmp_path):
+    from PIL import Image
+    from backend.services.glumoo_postprocess import render_cover
+
+    service = make_service(tmp_path)
+    folder = tmp_path / "task_editorial"
+    folder.mkdir()
+    source = folder / "_cover_source.png"
+    Image.new("RGB", (810, 1080), "#e7e3df").save(source)
+    page = {"index": 6, "type": "cover", "content": "[封面]\n封面主标题：出门前，看它怎么起步\n封面副标题：Glumoo 跃力"}
+    result = service.retry_single_image("task_editorial", page, user_topic="内部草稿")
+    assert result["success"]
+    expected = tmp_path / "expected.png"
+    render_cover(source, expected, "出门前，看它怎么起步", "Glumoo 跃力")
+    with Image.open(folder / "6.png") as actual, Image.open(expected) as wanted:
+        assert actual.tobytes() == wanted.tobytes()

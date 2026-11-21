@@ -50,8 +50,14 @@ class HistoryImageMerger:
         return "partial"
 
     @staticmethod
-    def first_image(generated: Optional[List[str]]) -> Optional[str]:
-        for item in generated or []:
+    def cover_thumbnail(generated: List[str], pages: List[dict]) -> Optional[str]:
+        for position, page in enumerate(pages):
+            if not isinstance(page, dict) or page.get("type") != "cover":
+                continue
+            index = page.get("index", position)
+            if isinstance(index, int) and 0 <= index < len(generated) and generated[index]:
+                return generated[index]
+        for item in generated:
             if item:
                 return item
         return None
