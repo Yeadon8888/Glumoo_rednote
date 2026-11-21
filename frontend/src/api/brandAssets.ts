@@ -13,11 +13,17 @@ export async function listBrandAssets(): Promise<BrandAsset[]> {
   return response.data.assets || []
 }
 
-export async function uploadBrandAssets(files: File[]): Promise<BrandAsset[]> {
+export async function uploadBrandAsset(file: File, progress: (percent: number) => void): Promise<BrandAsset> {
   const formData = new FormData()
-  files.forEach(file => formData.append('images', file))
-  const response = await axios.post(`${API_BASE_URL}/brand-assets`, formData)
-  return response.data.assets || []
+  formData.append('images', file)
+  const response = await axios.post(`${API_BASE_URL}/brand-assets`, formData, {
+    onUploadProgress(event) {
+      if (event.total) progress(Math.round(event.loaded * 100 / event.total))
+    }
+  })
+  const saved = response.data.assets?.[0]
+  if (!saved?.filename || !saved.url) throw new Error('未收到收藏结果，请重新打开品牌素材库核对。')
+  return saved
 }
 
 export async function brandAssetToFile(asset: BrandAsset): Promise<File> {

@@ -54,14 +54,16 @@
 
     <div class="asset-library">
       <div class="asset-library-bar">
-        <button type="button" class="asset-button" @click="toggleAssetLibrary" :disabled="loading">
+        <button type="button" class="asset-button" @click="toggleAssetLibrary" :disabled="loading || assetBusy">
           品牌素材库 <span v-if="brandAssets.length">{{ brandAssets.length }}</span>
         </button>
-        <label class="asset-button">
-          上传并收藏
-          <input type="file" accept="image/*" multiple hidden @change="handleBrandAssetUpload" />
-        </label>
+        <button type="button" class="asset-button" :disabled="loading || assetBusy" @click="assetInput?.click()">
+          {{ uploading ? '正在收藏…' : '上传并收藏' }}
+        </button>
+        <input ref="assetInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="handleBrandAssetUpload" />
       </div>
+      <p v-if="assetMessage" class="asset-status" role="status">{{ assetMessage }}</p>
+      <p v-if="assetError" class="asset-error" role="alert">{{ assetError }}</p>
       <div v-if="showAssetLibrary" class="asset-grid">
         <button
           v-for="asset in brandAssets"
@@ -69,13 +71,14 @@
           type="button"
           class="asset-card"
           :class="{ selected: selectedProductNames.has(asset.filename) }"
-          :disabled="loading"
+          :disabled="loading || assetBusy"
+          :aria-pressed="selectedProductNames.has(asset.filename)"
           @click="useBrandAsset(asset)"
         >
-          <img :src="asset.url" alt="品牌素材" />
-          <span>点击引用</span>
+          <img :src="asset.url + '?preview=1'" alt="品牌素材" loading="lazy" />
+          <span>{{ selectedProductNames.has(asset.filename) ? '已引用' : recentAssets.includes(asset.filename) ? '刚收藏 · 点击引用' : '点击引用' }}</span>
         </button>
-        <span v-if="brandAssets.length === 0" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
+        <span v-if="brandAssets.length === 0 && !assetBusy && !assetError" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
       </div>
       <div v-if="selectedProductImages.length" class="product-selection-summary">
         已选择 {{ selectedProductImages.length }} 张产品资产；它们与六张主参考分开传入。
@@ -162,11 +165,12 @@ try {const saved=JSON.parse(localStorage.getItem('glumoo.favoriteStyles')||'[]')
 const sortedStyles=computed(()=>[...contentStyles].sort((a,b)=>Number(favorites.value.includes(b.id))-Number(favorites.value.includes(a.id))))
 function toggleFavorite(){const id=store.contentStyle;favorites.value=favorites.value.includes(id)?favorites.value.filter(x=>x!==id):[...favorites.value,id];localStorage.setItem('glumoo.favoriteStyles',JSON.stringify(favorites.value))}
 
+import { normalizeApiError } from '../../utils/errors'
 import { contentStyles } from '../../contentStyles'
 import {
   brandAssetToFile,
   listBrandAssets,
-  uploadBrandAssets,
+  uploadBrandAsset,
   type BrandAsset
 } from '../../api/brandAssets'
 
@@ -210,6 +214,13 @@ const selectedProductImages = ref<Array<UploadedImage & { filename: string }>>([
 const selectedProductNames = ref(new Set<string>())
 const brandAssets = ref<BrandAsset[]>([])
 const showAssetLibrary = ref(false)
+const assetInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const readingAssets = ref(false)
+const assetBusy = computed(() => uploading.value || readingAssets.value)
+const assetMessage = ref('')
+const assetError = ref('')
+const recentAssets = ref<string[]>([])
 
 // 一键二创模式
 const layoutMimicMode = ref(false)
@@ -220,6 +231,7 @@ const store = useGeneratorStore()
 const chosenStyle = computed({get: () => store.contentStyle, set: value => store.setContentStyle(value)})
 const selectedStyle = computed(() => contentStyles.find(style => style.id === chosenStyle.value))
 const preparationHint = computed(() => {
+  if (assetBusy.value) return '正在处理品牌素材，请稍候。'
   if (notePanel.value?.pending) return '请先添加正在编辑的笔记，或清空输入框。'
   if (researchPanel.value?.working) return '请先完成当前的调研或选图。'
   if (chosenStyle.value.startsWith('glumoo') && uploadedImages.value.length !== 6 &&
@@ -297,23 +309,58 @@ function emitImagesChange() {
 }
 
 async function toggleAssetLibrary() {
+  if (assetBusy.value) return
   showAssetLibrary.value = !showAssetLibrary.value
-  if (showAssetLibrary.value) {
+  if (!showAssetLibrary.value) return
+  readingAssets.value = true
+  assetError.value = ''
+  try {
     brandAssets.value = await listBrandAssets()
+  } catch (error) {
+    assetError.value = '素材库读取失败：' + normalizeApiError(error).detail
+  } finally {
+    readingAssets.value = false
   }
 }
 
 async function handleBrandAssetUpload(event: Event) {
   const target = event.target as HTMLInputElement
-  const files = Array.from(target.files || []).slice(0, 8)
-  if (files.length === 0) return
-  await uploadBrandAssets(files)
-  brandAssets.value = await listBrandAssets()
-  showAssetLibrary.value = true
+  const files = Array.from(target.files || [])
   target.value = ''
+  if (!files.length || assetBusy.value) return
+  uploading.value = true
+  assetError.value = ''
+  recentAssets.value = []
+  let saved = 0
+  try {
+    for (const file of files) {
+      const label = `第 ${saved + 1}/${files.length} 张 · ${file.name}`
+      assetMessage.value = `正在上传 ${label}`
+      const asset = await uploadBrandAsset(file, percent => {
+        assetMessage.value = percent < 100 ? `正在上传 ${label} · ${percent}%` : `正在保存 ${label}`
+      })
+      brandAssets.value = [asset, ...brandAssets.value.filter(item => item.filename !== asset.filename)]
+      recentAssets.value.push(asset.filename)
+      showAssetLibrary.value = true
+      saved++
+    }
+    assetMessage.value = `已收藏 ${saved} 张产品图，点击图片即可引用。`
+    try {
+      brandAssets.value = await listBrandAssets()
+    } catch {
+      assetError.value = '已保存本次素材。完整列表读取失败，可重新打开素材库。'
+    }
+  } catch (error) {
+    assetMessage.value = saved ? `已确认收藏 ${saved} 张。` : ''
+    assetError.value = `${files[saved]?.name}：${normalizeApiError(error).detail}。可重新打开素材库核对后重试。`
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function useBrandAsset(asset: BrandAsset) {
+  if (assetBusy.value) return
+  assetError.value = ''
   if (selectedProductNames.value.has(asset.filename)) {
     const index = selectedProductImages.value.findIndex(item => item.filename === asset.filename)
     if (index >= 0) {
@@ -322,19 +369,29 @@ async function useBrandAsset(asset: BrandAsset) {
       selectedProductNames.value.delete(asset.filename)
       selectedProductNames.value = new Set(selectedProductNames.value)
       emitProductImagesChange()
+      assetMessage.value = '已取消本次引用，图片仍保存在素材库。'
     }
     return
   }
-  if (selectedProductImages.value.length >= 12) return
-  const file = await brandAssetToFile(asset)
-  selectedProductImages.value.push({
-    file,
-    preview: URL.createObjectURL(file),
-    filename: asset.filename
-  })
-  selectedProductNames.value.add(asset.filename)
-  selectedProductNames.value = new Set(selectedProductNames.value)
-  emitProductImagesChange()
+  if (selectedProductImages.value.length >= 12) {
+    assetError.value = '本次最多引用 12 张产品图，请先取消一张。'
+    return
+  }
+  readingAssets.value = true
+  assetMessage.value = '正在读取所选产品图…'
+  try {
+    const file = await brandAssetToFile(asset)
+    selectedProductImages.value.push({ file, preview: URL.createObjectURL(file), filename: asset.filename })
+    selectedProductNames.value.add(asset.filename)
+    selectedProductNames.value = new Set(selectedProductNames.value)
+    emitProductImagesChange()
+    assetMessage.value = '产品图已加入本次创作。'
+  } catch (error) {
+    assetMessage.value = ''
+    assetError.value = '引用失败：' + normalizeApiError(error).detail
+  } finally {
+    readingAssets.value = false
+  }
 }
 
 function emitProductImagesChange() {
@@ -342,6 +399,7 @@ function emitProductImagesChange() {
 }
 
 function clearProductAssets() {
+  assetMessage.value = ''
   selectedProductImages.value.forEach(item => URL.revokeObjectURL(item.preview))
   selectedProductImages.value = []
   selectedProductNames.value = new Set()
@@ -408,6 +466,8 @@ defineExpose({
   margin-top: 12px;
 }
 
+.asset-status, .asset-error {margin:6px 0;font-size:13px;overflow-wrap:anywhere}
+.asset-error {color:#a92d28}
 .asset-library-bar {
   display: flex;
   gap: 8px;
@@ -462,7 +522,7 @@ defineExpose({
 }
 
 .asset-card:hover { border-color: var(--primary); }
-.asset-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.asset-card img { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; }
 .asset-card span { display: block; padding: 5px; font-size: 10px; }
 .empty-assets { grid-column: 1 / -1; padding: 12px; color: var(--text-sub); font-size: 12px; }
 

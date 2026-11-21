@@ -11,11 +11,14 @@
 
 import os
 import json
+import io
 import base64
 import logging
 import shutil
 import uuid
+from tempfile import NamedTemporaryFile
 from pathlib import Path
+from PIL import Image, ImageOps
 from flask import Blueprint, request, jsonify, Response, send_file
 from backend.errors import ensure_app_error
 from backend.services.image import get_image_service
@@ -494,16 +497,32 @@ def create_image_blueprint():
                     context={"endpoint": "/api/brand-assets"},
                 )
 
+            if len(files) > 24:
+                return api_error_response(validation_error("图片数量过多", "单次最多收藏 24 张。"))
+            uploads = []
+            for upload in files:
+                try:
+                    with Image.open(upload.stream) as image:
+                        suffix = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}.get(image.format)
+                        if suffix is None:
+                            raise ValueError("unsupported format")
+                        image.verify()
+                    upload.stream.seek(0)
+                except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):
+                    return api_error_response(validation_error("图片无法读取", "请选择有效的 PNG、JPEG 或 WebP 图片。"))
+                uploads.append((upload, suffix))
+
             saved = []
-            # A complete Glumoo family contains nine distinct product masters.
-            # Keep headroom for alternate packaging while bounding one request.
-            for upload in files[:24]:
-                suffix = Path(upload.filename or "").suffix.lower()
-                if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
-                    suffix = ".png"
-                filename = f"asset_{uuid.uuid4().hex[:12]}{suffix}"
-                upload.save(asset_dir / filename)
-                saved.append(_brand_asset_payload(asset_dir / filename))
+            for upload, suffix in uploads:
+                path = asset_dir / f"asset_{uuid.uuid4().hex[:12]}{suffix}"
+                with NamedTemporaryFile(dir=asset_dir, delete=False) as staging:
+                    try:
+                        upload.save(staging)
+                        staging.close()
+                        os.replace(staging.name, path)
+                    finally:
+                        Path(staging.name).unlink(missing_ok=True)
+                saved.append(_brand_asset_payload(path))
             return jsonify({"success": True, "assets": saved}), 201
 
         assets = [
@@ -523,6 +542,8 @@ def create_image_blueprint():
         if request.method == 'DELETE':
             asset_path.unlink()
             return jsonify({"success": True}), 200
+        if request.args.get("preview") == "1":
+            return _brand_asset_preview(asset_path)
         return send_file(asset_path)
 
     # ==================== 健康检查 ====================
@@ -577,6 +598,26 @@ def _brand_asset_dir() -> Path:
     asset_dir = history_root / "brand_assets"
     asset_dir.mkdir(parents=True, exist_ok=True)
     return asset_dir
+
+
+def _brand_asset_preview(path: Path):
+    stat = path.stat()
+    tag = f"brand-preview-v1-{path.name}-{stat.st_mtime_ns}-{stat.st_size}"
+    if request.if_none_match.contains(tag):
+        response = Response(status=304)
+        response.set_etag(tag)
+    else:
+        with Image.open(path) as image:
+            image.thumbnail((320, 320), Image.Resampling.LANCZOS)
+            thumbnail = ImageOps.exif_transpose(image).convert("RGBA")
+            background = Image.new("RGB", thumbnail.size, "white")
+            background.paste(thumbnail, mask=thumbnail.getchannel("A"))
+            output = io.BytesIO()
+            background.save(output, "JPEG", quality=84)
+        output.seek(0)
+        response = send_file(output, mimetype="image/jpeg", etag=tag)
+    response.cache_control.private = True
+    return response
 
 
 def _brand_asset_payload(path: Path) -> dict:
