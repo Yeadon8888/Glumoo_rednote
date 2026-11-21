@@ -21,7 +21,7 @@
         </RouterLink>
       </nav>
       
-      <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-color);">
+      <div class="sidebar-account" style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-color);">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--primary) 0%, #ff6b6b 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">G</div>
           <div>

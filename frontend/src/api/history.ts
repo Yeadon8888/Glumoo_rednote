@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, {type AxiosRequestConfig} from 'axios'
 import {
   API_BASE_URL,
   getApiErrorPayload
@@ -34,6 +34,18 @@ export async function createHistory(
   }
 }
 
+async function readCatalog(path: string, params?: AxiosRequestConfig['params']) {
+  const config = {params, timeout: 20000}
+  try {
+    return await axios.get(API_BASE_URL + path, config)
+  } catch (error) {
+    if (!axios.isAxiosError(error) || axios.isCancel(error) ||
+        (error.response && ![502, 503, 504].includes(error.response.status))) throw error
+    await new Promise(resolve => setTimeout(resolve, 750))
+    return axios.get(API_BASE_URL + path, config)
+  }
+}
+
 export async function getHistoryList(
   page: number = 1,
   pageSize: number = 20,
@@ -52,10 +64,7 @@ export async function getHistoryList(
     const params: any = { page, page_size: pageSize }
     if (status) params.status = status
 
-    const response = await axios.get(`${API_BASE_URL}/history`, {
-      params,
-      timeout: 10000
-    })
+    const response = await readCatalog('/history', params)
     return response.data
   } catch (error: any) {
     return {
@@ -146,10 +155,7 @@ export async function searchHistory(keyword: string): Promise<{
   error_message?: string
 }> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/history/search`, {
-      params: { keyword },
-      timeout: 10000
-    })
+    const response = await readCatalog('/history/search', {keyword})
     return response.data
   } catch (error: any) {
     return { success: false, records: [], ...getApiErrorPayload(error, '搜索历史记录失败') }
@@ -164,9 +170,7 @@ export async function getHistoryStats(): Promise<{
   error_message?: string
 }> {
   try {
-    const response = await axios.get(`${API_BASE_URL}/history/stats`, {
-      timeout: 10000
-    })
+    const response = await readCatalog('/history/stats')
     return response.data
   } catch (error: any) {
     return { success: false, total: 0, by_status: {}, ...getApiErrorPayload(error, '获取统计信息失败') }

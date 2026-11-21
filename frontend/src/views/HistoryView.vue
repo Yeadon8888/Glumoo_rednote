@@ -6,7 +6,7 @@
       <div>
         <h1 class="page-title">我的创作</h1>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <div class="history-actions">
         <a class="btn" href="/api/history/backup.zip" download>备份全部作品</a>
         <a class="btn" href="/api/studio/reviews.jsonl?history=1" download>导出点评 JSONL</a>
         <button
@@ -48,6 +48,9 @@
       <p>依次保存以下各卷。每卷均可单独打开，下载中断时可单独重试。</p>
       <a v-for="n in backupParts" :key="n" :href="`/api/history/backup.zip?part=${n}&parts=${backupParts}`" download>第 {{ n }} 卷</a>
     </details>
+    <p v-if="statsFailed" class="read-notice" role="status">作品统计暂未加载。
+      <button type="button" @click="loadStats">重试统计</button>
+    </p>
     <!-- Stats Overview -->
     <StatsOverview v-if="stats" :stats="stats" />
 
@@ -89,11 +92,15 @@
     </div>
 
     <!-- Content Area -->
+    <div v-if="listError" class="read-notice" role="alert">
+      <span>{{ listError }}</span>
+      <button type="button" @click="loadData(appliedKeyword)">重新加载作品</button>
+    </div>
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
     </div>
 
-    <div v-else-if="records.length === 0" class="empty-state-large">
+    <div v-else-if="!listError && records.length === 0" class="empty-state-large">
       <div class="empty-img">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
       </div>
@@ -101,7 +108,7 @@
       <p class="empty-tips">去创建一个新的作品吧</p>
     </div>
 
-    <div v-else class="gallery-grid">
+    <div v-else-if="records.length" class="gallery-grid">
       <GalleryCard
         v-for="record in records"
         :key="record.id"
@@ -189,41 +196,47 @@ const isScanning = ref(false)
 const error = ref<AppError | null>(null)
 const successMessage = ref('')
 
-/**
- * 加载历史记录列表
- */
-async function loadData() {
+const listError = ref('')
+const statsFailed = ref(false)
+const appliedKeyword = ref('')
+let requestNumber = 0
+let lastListKey = ''
+
+async function loadData(keyword = '') {
+  const currentRequest = ++requestNumber
+  appliedKeyword.value = keyword
+  const key = JSON.stringify([currentTab.value, currentPage.value, keyword])
+  if (key !== lastListKey) {
+    records.value = []
+    totalPages.value = 1
+  }
+  lastListKey = key
   loading.value = true
-  error.value = null
+  listError.value = ''
   try {
-    let statusFilter = currentTab.value === 'all' ? undefined : currentTab.value
-    const res = await getHistoryList(currentPage.value, 12, statusFilter)
-    if (res.success) {
-      records.value = res.records
-      totalPages.value = res.total_pages
-    } else {
-      error.value = normalizeApiError(res.error || res.error_message || '获取历史记录列表失败', '获取历史记录列表失败')
+    const filter = currentTab.value === 'all' ? undefined : currentTab.value
+    const res = keyword ? await searchHistory(keyword) : await getHistoryList(currentPage.value, 12, filter)
+    if (currentRequest !== requestNumber) return
+    if (!res.success) throw res.error || res.error_message
+    records.value = res.records
+    totalPages.value = 'total_pages' in res ? Number(res.total_pages) : 1
+  } catch (error) {
+    if (currentRequest === requestNumber) {
+      listError.value = '作品列表暂未加载成功。' + normalizeApiError(error, '读取失败').detail
     }
-  } catch(e) {
-    error.value = normalizeApiError(e, '获取历史记录列表失败')
   } finally {
-    loading.value = false
+    if (currentRequest === requestNumber) loading.value = false
   }
 }
 
-/**
- * 加载统计数据
- */
 async function loadStats() {
+  statsFailed.value = false
   try {
     const res = await getHistoryStats()
-    if (res.success) {
-      stats.value = res
-    } else {
-      error.value = normalizeApiError(res.error || res.error_message || '获取统计信息失败', '获取统计信息失败')
-    }
-  } catch(e) {
-    error.value = normalizeApiError(e, '获取统计信息失败')
+    if (res.success) stats.value = res
+    else statsFailed.value = true
+  } catch {
+    statsFailed.value = true
   }
 }
 
@@ -239,26 +252,9 @@ function switchTab(tab: string) {
 /**
  * 搜索历史记录
  */
-async function handleSearch() {
-  if (!searchKeyword.value.trim()) {
-    loadData()
-    return
-  }
-  loading.value = true
-  error.value = null
-  try {
-    const res = await searchHistory(searchKeyword.value)
-    if (res.success) {
-      records.value = res.records
-      totalPages.value = 1
-    } else {
-      error.value = normalizeApiError(res.error || res.error_message || '搜索历史记录失败', '搜索历史记录失败')
-    }
-  } catch(e) {
-    error.value = normalizeApiError(e, '搜索历史记录失败')
-  } finally {
-    loading.value = false
-  }
+function handleSearch() {
+  currentPage.value = 1
+  return loadData(searchKeyword.value.trim())
 }
 
 /**
@@ -448,8 +444,7 @@ async function handleScanAll() {
 }
 
 onMounted(async () => {
-  await loadData()
-  await loadStats()
+  await Promise.all([loadData(), loadStats()])
 
   // 检查路由参数，如果有 ID 则自动打开图片查看器
   if (route.params.id) {
@@ -461,6 +456,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.page-header {gap:12px;flex-wrap:wrap}
+.history-actions {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.history-actions a {display:inline-flex;align-items:center;color:var(--text-main);text-decoration:none;background:white;border:1px solid var(--border-color)}
+.read-notice {display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:14px 0;padding:12px 16px;border:1px solid var(--border-color);border-radius:10px;background:white}
+.read-notice button {color:#315ac3;background:transparent;border:0;text-decoration:underline;cursor:pointer}
+
 .backup-parts { margin-bottom: 16px; }
 .backup-parts summary { cursor: pointer; }
 .backup-parts a { display: inline-block; margin: 4px 16px 4px 0; }

@@ -204,3 +204,18 @@ body {
   color: var(--primary);
   text-decoration: underline;
 }
+
+@media (max-width: 800px) {
+  #app { flex-direction: column; }
+  .layout-sidebar {
+    position: static; width: 100%; height: auto; padding: 8px 14px;
+    flex-direction: row; align-items: center; justify-content: space-between;
+    gap: 8px; border-right: 0; border-bottom: 1px solid var(--border-color);
+  }
+  .layout-sidebar .logo-area { width: clamp(54px, 12vw, 96px); margin: 0; }
+  .layout-sidebar .nav-menu { display: flex; flex-direction: row; gap: 2px; }
+  .layout-sidebar .nav-item { padding: 8px 6px; font-size: 13px; gap: 4px; }
+  .layout-sidebar .nav-item svg { width: 16px; }
+  .layout-sidebar .sidebar-account { display: none; }
+  .layout-main { margin-left: 0; min-width: 0; padding: 16px 10px; }
+}

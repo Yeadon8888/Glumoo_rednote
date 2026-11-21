@@ -346,4 +346,7 @@ async function handleGenerate() {
   from { opacity: 0; transform: translateX(-50%) translateY(20px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+@media (max-width: 800px) {
+  .hero-section {padding:24px 8px}
+}
 </style>

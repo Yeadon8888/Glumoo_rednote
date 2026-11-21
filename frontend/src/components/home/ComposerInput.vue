@@ -21,14 +21,24 @@
 
     <NoteReferences ref="notePanel" :disabled="loading" />
     <div class="style-section">
-      <label class="style-heading" for="reference-style">参考风格</label>
-      <div class="style-controls">
-        <select id="reference-style" v-model="chosenStyle" :disabled="loading">
-          <option v-for="style in sortedStyles" :key="style.id" :value="style.id">{{ favorites.includes(style.id) ? '★ ' : '' }}{{ style.name }}</option>
-        </select>
-        <button type="button" class="tool-btn" @click="toggleFavorite">{{favorites.includes(chosenStyle)?'移出常用':'设为常用'}}</button>
+      <div class="style-heading">
+        <h2 id="reference-style-heading">参考风格</h2>
+        <button type="button" class="asset-button" :aria-pressed="favorites.includes(chosenStyle)" @click="toggleFavorite">
+          {{ favorites.includes(chosenStyle) ? '移出常用' : '设为常用' }}
+        </button>
       </div>
-      <span class="style-description">{{ selectedStyle?.description }}</span>
+      <div class="style-grid" role="radiogroup" aria-labelledby="reference-style-heading">
+        <label v-for="style in sortedStyles" :key="style.id" class="style-card"
+          :class="{ selected: style.id === chosenStyle }">
+          <input v-model="chosenStyle" type="radio" name="reference-style" :value="style.id"
+            :aria-label="style.name" :disabled="loading">
+          <span class="style-name">{{ style.name }}</span>
+          <span class="style-copy">{{ style.description }}</span>
+          <span v-if="style.badge || favorites.includes(style.id)" class="style-meta">
+            {{ [style.badge, favorites.includes(style.id) ? '常用' : ''].filter(Boolean).join(' · ') }}
+          </span>
+        </label>
+      </div>
       <ResearchPanel ref="researchPanel" :topic="modelValue" :style-id="chosenStyle" :disabled="loading"
         :upload-count="uploadedImages.length" />
     </div>
@@ -229,7 +239,6 @@ const layoutMimicMode = ref(false)
 import { useGeneratorStore } from '../../stores/generator'
 const store = useGeneratorStore()
 const chosenStyle = computed({get: () => store.contentStyle, set: value => store.setContentStyle(value)})
-const selectedStyle = computed(() => contentStyles.find(style => style.id === chosenStyle.value))
 const preparationHint = computed(() => {
   if (assetBusy.value) return '正在处理品牌素材，请稍候。'
   if (notePanel.value?.pending) return '请先添加正在编辑的笔记，或清空输入框。'
@@ -450,6 +459,7 @@ defineExpose({
 <style scoped>
 /* 组合框容器 */
 .composer-container {
+  max-width: 960px;
   background: white;
   border-radius: 16px;
   padding: 16px;
@@ -526,16 +536,27 @@ defineExpose({
 .asset-card span { display: block; padding: 5px; font-size: 10px; }
 .empty-assets { grid-column: 1 / -1; padding: 12px; color: var(--text-sub); font-size: 12px; }
 
-.style-heading {
-  margin-bottom: 8px;
-  color: var(--text-sub);
-  font-size: 13px;
-  font-weight: 600;
+.style-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.style-heading h2 {margin:0;font-size:16px;line-height:1.5}
+.style-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,148px),1fr));gap:8px}
+.style-card {
+  position:relative;display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:5px;
+  min-width:0;padding:12px;border:1px solid var(--border-color);border-radius:10px;
+  background:#fff;cursor:pointer;overflow-wrap:anywhere;
 }
-
-.style-controls {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.style-controls select {padding:8px 12px;border-radius:8px;border:1px solid var(--border-color,#ddd);font:inherit;max-width:100%}
-
+.style-card:hover {border-color:#a5b7e5}
+.style-card.selected {border-color:#315ac3;background:#f1f5ff;box-shadow:inset 0 0 0 1px #315ac3}
+.style-card:focus-within {outline:2px solid #315ac3;outline-offset:2px}
+.style-card input {position:absolute;top:14px;right:10px;width:14px;height:14px;accent-color:#315ac3}
+.style-name {padding-right:15px;font-weight:650;font-size:13px;line-height:1.45}
+.style-copy {font-size:12px;line-height:1.5;color:var(--text-sub)}
+.style-meta {align-self:end;font-size:11px;color:#3052a2}
+@media (max-width: 600px) {
+  .composer-container {padding:12px}
+  .composer-toolbar {flex-wrap:wrap;gap:8px}
+  .style-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .asset-grid {grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 .style-description {
   display: block;
   margin-top: 6px;
