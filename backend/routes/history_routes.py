@@ -28,8 +28,16 @@ def create_history_blueprint():
 
     @history_bp.get('/history/backup.zip')
     def backup_history():
-        filename = datetime.now().strftime("glumoo-history-%Y%m%d-%H%M%S.zip")
-        return Response(backup_chunks(get_history_service()), mimetype="application/zip",
+        try:
+            parts = int(request.args.get("parts", "1"))
+            part = int(request.args.get("part", "1"))
+        except ValueError:
+            return jsonify(error="无效的备份卷号"), 400
+        if parts not in (1, 16, 64) or not 1 <= part <= parts:
+            return jsonify(error="无效的备份卷号"), 400
+        suffix = f"-{part:02d}-of-{parts}" if parts > 1 else ""
+        filename = datetime.now().strftime("glumoo-history-%Y%m%d") + suffix + ".zip"
+        return Response(backup_chunks(get_history_service(), part, parts), mimetype="application/zip",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"',
                                  "Cache-Control": "no-store"})
 

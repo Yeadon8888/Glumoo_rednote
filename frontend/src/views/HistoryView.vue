@@ -43,6 +43,11 @@
       历史存储剩余 {{ (stats.storage.free / 1024**3).toFixed(2) }} GiB。
       <strong v-if="stats.storage.warning">空间偏低，请下载全部作品备份，并安排扩容。</strong>
     </p>
+    <details v-if="stats?.storage" class="backup-parts">
+      <summary>网络较慢？分卷备份</summary>
+      <p>依次保存以下各卷。每卷均可单独打开，下载中断时可单独重试。</p>
+      <a v-for="n in backupParts" :key="n" :href="`/api/history/backup.zip?part=${n}&parts=${backupParts}`" download>第 {{ n }} 卷</a>
+    </details>
     <!-- Stats Overview -->
     <StatsOverview v-if="stats" :stats="stats" />
 
@@ -139,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   getHistoryList,
@@ -170,6 +175,7 @@ const store = useGeneratorStore()
 const records = ref<HistoryRecord[]>([])
 const loading = ref(false)
 const stats = ref<any>(null)
+const backupParts = computed(() => stats.value?.storage && stats.value.storage.total - stats.value.storage.free > 2 * 1024**3 ? 64 : 16)
 const currentTab = ref('all')
 const searchKeyword = ref('')
 const currentPage = ref(1)
@@ -455,6 +461,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.backup-parts { margin-bottom: 16px; }
+.backup-parts summary { cursor: pointer; }
+.backup-parts a { display: inline-block; margin: 4px 16px 4px 0; }
+
 /* Small Spinner */
 .spinner-small {
   width: 16px;

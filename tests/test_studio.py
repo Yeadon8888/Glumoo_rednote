@@ -139,3 +139,23 @@ def test_scored_edits_survive_and_export_with_images(client, history, tmp_path):
         assert archive.read("history/task_unindexed/0.png") == original
         assert json.loads(archive.read("manifest.json"))["missing_images"] == []
         assert not any("sqlite" in name for name in archive.namelist())
+
+
+def test_backup_parts_cover_full_archive_once(client, history, tmp_path):
+    import zipfile
+    history.create_record("分卷草稿", {"pages": []})
+    for i in range(5):
+        path = tmp_path / f"task_{i}"
+        path.mkdir()
+        (path / "0.png").write_bytes(png("gold"))
+    def members(query):
+        with zipfile.ZipFile(io.BytesIO(client.get("/api/history/backup.zip"+query).data)) as z:
+            assert z.testzip() is None
+            return {n for n in z.namelist() if n.startswith("history/")}
+    found = set()
+    for i in range(1, 17):
+        part = members(f"?part={i}&parts=16")
+        assert not found.intersection(part)
+        found.update(part)
+    assert found == members("")
+    assert client.get("/api/history/backup.zip?part=0&parts=16").status_code == 400
