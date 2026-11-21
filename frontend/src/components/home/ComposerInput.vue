@@ -1,6 +1,40 @@
 <template>
   <!-- 主题输入组合框 -->
   <div class="composer-container">
+    <div class="asset-library">
+      <div class="asset-library-bar">
+        <button type="button" class="asset-button" :aria-expanded="showAssetLibrary" @click="toggleAssetLibrary" :disabled="loading || assetBusy">
+          选择品牌素材 <span v-if="brandAssets.length">{{ brandAssets.length }}</span>
+        </button>
+        <button type="button" class="asset-button" :disabled="loading || assetBusy" @click="assetInput?.click()">
+          {{ uploading ? '正在收藏…' : '上传并收藏' }}
+        </button>
+        <input ref="assetInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="handleBrandAssetUpload" />
+      </div>
+      <p v-if="assetMessage" class="asset-status" role="status">{{ assetMessage }}</p>
+      <p v-if="assetError" class="asset-error" role="alert">{{ assetError }}</p>
+      <div v-if="showAssetLibrary" class="asset-grid">
+        <button
+          v-for="asset in brandAssets"
+          :key="asset.filename"
+          type="button"
+          class="asset-card"
+          :class="{ selected: selectedProductNames.has(asset.filename) }"
+          :disabled="loading || assetBusy"
+          :aria-pressed="selectedProductNames.has(asset.filename)"
+          @click="useBrandAsset(asset)"
+        >
+          <img :src="asset.url + '?preview=1'" alt="品牌素材" loading="lazy" />
+          <span>{{ selectedProductNames.has(asset.filename) ? '已引用' : recentAssets.includes(asset.filename) ? '刚收藏 · 点击引用' : '点击引用' }}</span>
+        </button>
+        <span v-if="brandAssets.length === 0 && !assetBusy && !assetError" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
+      </div>
+      <div v-if="selectedProductImages.length" class="product-selection-summary">
+        已选择 {{ selectedProductImages.length }} 张产品资产；它们与六张主参考分开传入。
+        <button type="button" class="clear-product-assets" @click="clearProductAssets">清空产品资产</button>
+      </div>
+    </div>
+
     <!-- 输入区域 -->
     <div class="composer-input-wrapper">
       <div class="search-icon-static">
@@ -59,40 +93,6 @@
       </div>
       <div class="upload-hint">
         这些图片将用于生成封面和内容参考
-      </div>
-    </div>
-
-    <div class="asset-library">
-      <div class="asset-library-bar">
-        <button type="button" class="asset-button" @click="toggleAssetLibrary" :disabled="loading || assetBusy">
-          品牌素材库 <span v-if="brandAssets.length">{{ brandAssets.length }}</span>
-        </button>
-        <button type="button" class="asset-button" :disabled="loading || assetBusy" @click="assetInput?.click()">
-          {{ uploading ? '正在收藏…' : '上传并收藏' }}
-        </button>
-        <input ref="assetInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="handleBrandAssetUpload" />
-      </div>
-      <p v-if="assetMessage" class="asset-status" role="status">{{ assetMessage }}</p>
-      <p v-if="assetError" class="asset-error" role="alert">{{ assetError }}</p>
-      <div v-if="showAssetLibrary" class="asset-grid">
-        <button
-          v-for="asset in brandAssets"
-          :key="asset.filename"
-          type="button"
-          class="asset-card"
-          :class="{ selected: selectedProductNames.has(asset.filename) }"
-          :disabled="loading || assetBusy"
-          :aria-pressed="selectedProductNames.has(asset.filename)"
-          @click="useBrandAsset(asset)"
-        >
-          <img :src="asset.url + '?preview=1'" alt="品牌素材" loading="lazy" />
-          <span>{{ selectedProductNames.has(asset.filename) ? '已引用' : recentAssets.includes(asset.filename) ? '刚收藏 · 点击引用' : '点击引用' }}</span>
-        </button>
-        <span v-if="brandAssets.length === 0 && !assetBusy && !assetError" class="empty-assets">还没有素材，可上传产品图、Logo 或品牌参考图。</span>
-      </div>
-      <div v-if="selectedProductImages.length" class="product-selection-summary">
-        已选择 {{ selectedProductImages.length }} 张产品资产；它们与六张主参考分开传入。
-        <button type="button" class="clear-product-assets" @click="clearProductAssets">清空产品资产</button>
       </div>
     </div>
 
@@ -473,7 +473,7 @@ defineExpose({
 }
 
 .asset-library {
-  margin-top: 12px;
+  margin-bottom: 12px;
 }
 
 .asset-status, .asset-error {margin:6px 0;font-size:13px;overflow-wrap:anywhere}
