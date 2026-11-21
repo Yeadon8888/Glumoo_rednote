@@ -7,7 +7,7 @@ export interface Study {
   notes: {id:string; title:string; likes:number|null; saves:number|null; date:string; url:string}[]
   selected: string[]
 }
-export interface Pick {id:string; url:string; reason:string}
+export interface Pick {id:string; url:string; reason:string; basis?:string}
 export interface StudioSettings {tikhub_configured:boolean; models:string[]}
 export const loadStudio = async () => (await axios.get<StudioSettings>(url+'/settings')).data
 export const saveStudio = async (data: {tikhub_key?:string; models?:string[]}) => (await axios.put<StudioSettings>(url+'/settings',data)).data

@@ -361,7 +361,7 @@ async function regenerateHistoryImage(index: number) {
       const imgElements = document.querySelectorAll(`img[src*="${viewingRecord.value.images.task_id}/${filename}"]`)
       imgElements.forEach(img => {
         const baseUrl = (img as HTMLImageElement).src.split('?')[0]
-        ;(img as HTMLImageElement).src = `${baseUrl}?t=${timestamp}`
+        ;(img as HTMLImageElement).src = `${baseUrl}?thumbnail=false&t=${timestamp}`
       })
 
       await updateHistory(viewingRecord.value.id, {

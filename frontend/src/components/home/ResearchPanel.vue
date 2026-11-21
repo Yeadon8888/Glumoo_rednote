@@ -19,7 +19,7 @@
       <button type="button" class="tool-btn" @click="browsing=false">取消</button>
       <div class="library"><button type="button" v-for="p in library" :key="p.id" :aria-pressed="draft.some(x=>x.id===p.id)" @click="toggle(p)"><img loading="lazy" :src="p.url+'?preview=1'" alt="选择参考图"></button></div>
     </div>
-    <div class="picks"><figure v-for="p in picks" :key="p.id"><img :src="p.url+'?preview=1'" loading="lazy" alt=""><figcaption>{{p.reason}}</figcaption></figure></div>
+    <div class="picks"><figure v-for="p in picks" :key="p.id"><img :src="p.url+'?preview=1'" loading="lazy" alt=""><figcaption>{{p.basis ? p.basis + ' · ' : ''}}{{p.reason}}</figcaption></figure></div>
   </section>
 </template>
 <script setup lang="ts">
@@ -31,14 +31,14 @@ const examples=computed(()=>examplesData[props.styleId as keyof typeof examplesD
 const study=ref<Study|null>(null),picks=ref<Pick[]>([]),status=ref(''),busy=ref(false)
 const browsing=ref(false),library=ref<Pick[]>([]),draft=ref<Pick[]>([])
 async function browse(){try{if(!library.value.length)library.value=await listReferences();draft.value=[...picks.value];browsing.value=true}catch(e){status.value=studioError(e)}}
-function toggle(p:Pick){if(draft.value.some(x=>x.id===p.id))draft.value=draft.value.filter(x=>x.id!==p.id);else if(draft.value.length<6)draft.value.push({...p,reason:'手动选入本次参考'})}
+function toggle(p:Pick){if(draft.value.some(x=>x.id===p.id))draft.value=draft.value.filter(x=>x.id!==p.id);else if(draft.value.length<6)draft.value.push({...p,reason:'手动选入本次参考',basis:'自选'})}
 function confirmPicks(){picks.value=[...draft.value];browsing.value=false;status.value='已采用自选的六张参考图'}
 let revision=0
 watch(()=>[props.topic,props.styleId],()=>{revision++;browsing.value=false;picks.value=[];study.value=null;status.value=''})
 async function runStudy(){const id=revision;busy.value=true;status.value='正在查询当期笔记…';try{const result=await searchNotes(props.topic.trim());if(id===revision){study.value=result;status.value=result.basis}}catch(e){if(id===revision)status.value=studioError(e)}finally{busy.value=false}}
 async function find(){const id=revision;status.value='正在查看参考库图片并比较风格…';const result=await matchReferences(props.topic.trim(),props.styleId)
   if(id!==revision)throw Error('主题已变化，请重新匹配')
-  picks.value=result;status.value=result.length===6?'已为六页选好参考图':'库中有 '+result.length+' 张匹配，请手动选择六张当次参考图'}
+  picks.value=result;status.value=result.length===6?'已为六页选好参考图':'库中有 '+result.length+' 张匹配，可从库中自选六张或上传当次参考图'}
 async function preview(){busy.value=true;try{await find()}catch(e){status.value=studioError(e)}finally{busy.value=false}}
 async function selectedFiles(){
   if(busy.value)throw Error('调研仍在进行，请稍后再生成')

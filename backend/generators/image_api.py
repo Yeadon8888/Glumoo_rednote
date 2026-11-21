@@ -6,7 +6,7 @@ import time
 import random
 import requests
 from typing import Dict, Any, Optional, List, Union
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from .base import ImageGeneratorBase
 from ..utils.image_compressor import compress_image
 
@@ -114,9 +114,13 @@ class ImageApiGenerator(ImageGeneratorBase):
             )
         trace = kwargs.get("generation_trace")
         if trace is not None:
-            with Image.open(io.BytesIO(image_data)) as source:
-                trace.update(source=image_data, format=source.format.lower(),
-                             native_size=list(source.size), quality=self.quality)
+            try:
+                with Image.open(io.BytesIO(image_data)) as source:
+                    source.load()
+                    trace.update(source=image_data, format=source.format.lower(),
+                                 native_size=list(source.size), quality=self.quality)
+            except (UnidentifiedImageError, OSError) as exc:
+                raise ImageModelUnavailable(f"{model} 返回的图片文件无法解码") from exc
         return self._normalize_output_aspect_ratio(image_data, aspect_ratio)
 
     def _collect_reference_image_uris(

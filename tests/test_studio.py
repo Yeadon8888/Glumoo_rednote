@@ -97,3 +97,14 @@ def test_model_order_is_used_and_native_output_survives(tmp_path, history):
     receipt = json.loads((tmp_path/"task_fixture/0.model.json").read_text())
     assert receipt["attempted"] == ["first","second"] and receipt["model"] == "second"
     assert (tmp_path/"task_fixture/native/0.png").read_bytes() == image
+
+
+def test_indexed_selection_matches_style_without_requiring_visual_api():
+    from backend.services.visual_research import feature_index, indexed_picks
+    features = feature_index()
+    files = [(k, None) for k in features]
+    selected = indexed_picks(files, "窗边给小狗梳毛", "glumoo_2")
+    assert len(selected) == len({features[x["id"]]["group"] for x in selected}) == 6
+    assert all(2 in features[x["id"]]["styles"] for x in selected)
+    assert any("梳毛" in x["reason"] for x in selected)
+    assert indexed_picks(files, "盆栽", "glumoo_17") == []

@@ -4,6 +4,9 @@ import hashlib
 import io
 import json
 import os
+import re
+from functools import lru_cache
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 import requests
 from backend.services.glumoo_reference_library import GlumooReferenceLibrary
@@ -24,13 +27,53 @@ def reference_bytes(ids):
     return [compress_image(files[i].read_bytes(), max_size_kb=450) for i in ids]
 
 
+@lru_cache(maxsize=1)
+def feature_index():
+    path = Path(__file__).resolve().parents[1] / "prompts" / "glumoo_reference_features.json"
+    return json.loads(path.read_text())
+
+
+def indexed_picks(files, topic, style):
+    number = int(style.split("_")[1]) if style != "glumoo" else None
+    query = re.sub(r"\s+", "", topic.casefold().replace("犬", "狗"))
+    terms = {query[i:i+2] for i in range(len(query)-1)}
+    terms.update(word for word in ("猫", "狗", "罐", "碗", "光", "窗") if word in query)
+    candidates = []
+    for key, _ in files:
+        entry = feature_index().get(key)
+        if not entry or number is not None and number not in entry["styles"]:
+            continue
+        description = entry["reason"].replace("犬", "狗")
+        score = sum(len(term) for term in terms if term in description)
+        tie = hashlib.sha256((query + style + key).encode()).digest()
+        candidates.append((score, tie, key, entry))
+    groups = set()
+    result = []
+    for _, _, key, entry in sorted(candidates, reverse=True):
+        if entry["group"] in groups:
+            continue
+        groups.add(entry["group"])
+        result.append({"id": key, "url": "/api/studio/references/"+key,
+                       "reason": entry["reason"], "basis": "审核库逐图特征"})
+        if len(result) == 6:
+            break
+    return result
+
+
 def pick_references(topic, style):
-    token = os.getenv("TOKENSFACTORY_API_KEY")
-    if not token:
-        raise ValueError("自动选图需要 TokensFactory 视觉服务，也可以手动上传参考图")
     files = list(library_files().items())
-    if len(files) < 6:
-        raise ValueError("参考库可用图片不足六张")
+    picks = indexed_picks(files, topic, style)
+    token = os.getenv("TOKENSFACTORY_API_KEY")
+    if len(picks) == 6 or not files or not token:
+        return picks
+    try:
+        live = vision_picks(files, topic, style, token)
+    except (requests.RequestException, ValueError, TypeError, KeyError, IndexError):
+        return picks
+    return list({p["id"]:p for p in live + picks}.values())[:6]
+
+
+def vision_picks(files, topic, style, token):
     brief = get_glumoo_style_instruction(style)
     content = [{"type": "text", "text": (
         "为品牌摄影选择六张主参考。看每幅照片的编号，按主题和风格选镜头、构图、光线或动作有根据且互补的照片。"
@@ -62,5 +105,5 @@ def pick_references(topic, style):
         reason = row.get("reason")
         if type(index) == int and 1<=index<=len(files) and isinstance(reason,str) and reason.strip():
             key = files[index-1][0]
-            picks[key] = {"id":key, "url":"/api/studio/references/"+key,"reason":reason[:240]}
+            picks[key] = {"id":key, "url":"/api/studio/references/"+key,"reason":reason[:240],"basis":"Gemini 当次看图"}
     return list(picks.values())[:6]
