@@ -33,6 +33,20 @@ def database():
                 PRIMARY KEY(record_id,version)
             );
         """)
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='review_events'").fetchone():
+            db.executescript("""
+                BEGIN IMMEDIATE;
+                CREATE TABLE IF NOT EXISTS review_events (
+                    record_id TEXT, version TEXT, reviewed_at TEXT, data TEXT,
+                    PRIMARY KEY(record_id, version, reviewed_at)
+                );
+                INSERT OR IGNORE INTO review_events SELECT * FROM reviews;
+                CREATE TRIGGER IF NOT EXISTS save_review_event AFTER INSERT ON reviews
+                BEGIN
+                    INSERT INTO review_events VALUES (NEW.record_id, NEW.version, NEW.reviewed_at, NEW.data);
+                END;
+                COMMIT;
+            """)
         with db:
             yield db
     finally:
@@ -75,7 +89,7 @@ def review_revision(record):
     return hashlib.sha256(json.dumps(state).encode()).hexdigest()
 
 
-def review_record(record, rating, reason, revision):
+def review_record(record, rating, reason, revision, score=None):
     task = (record.get("images") or {}).get("task_id") or ""
     if not re.fullmatch(r"[\w-]+", task):
         raise ValueError("这条记录还没有成品图")
@@ -85,6 +99,7 @@ def review_record(record, rating, reason, revision):
         raise ValueError("作品已更新，请重新打开成品后点评")
     images = []
     with database() as db:
+        db.execute("BEGIN IMMEDIATE")
         for index, name in enumerate(record["images"].get("generated") or []):
             if not name:
                 continue
@@ -112,7 +127,15 @@ def review_record(record, rating, reason, revision):
         if not current or revision != review_revision(current):
             raise ValueError("保存期间作品已更新，请重新打开后点评")
         version = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()
+        prior = db.execute("SELECT data FROM reviews WHERE record_id=? AND version=?",
+                           (record["id"], version)).fetchone()
+        if prior:
+            last = json.loads(prior[0])
+            if (last.get("score"), last["rating"], last["reason"]) == (score, rating, reason):
+                return last
         item.update(version=version, rating=rating, reason=reason, reviewed_at=now())
+        if score is not None:
+            item.update(score=score, score_max=5)
         db.execute("INSERT OR REPLACE INTO reviews VALUES (?,?,?,?)",
                    (record["id"], version, item["reviewed_at"], json.dumps(item, ensure_ascii=False)))
     return item

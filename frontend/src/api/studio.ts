@@ -15,7 +15,7 @@ export const discoverModels = async () => (await axios.get<{models:string[]}>(ur
 export const searchNotes = async (topic:string) => (await axios.post<Study>(url+'/research',{topic})).data
 export const matchReferences = async (topic:string,style:string) => (await axios.post<{items:Pick[]}>(url+'/references',{topic,style})).data.items
 export const loadReview = async (id:string) => (await axios.get(url+'/reviews/'+id)).data.review
-export const saveReview = async (id:string,rating:string,reason:string,revision?:string) => (await axios.put(url+'/reviews/'+id,{rating,reason,revision})).data.review
+export const saveReview = async (id:string,score:number,reason:string,revision?:string) => (await axios.put(url+'/reviews/'+id,{score,reason,revision})).data.review
 export const studioError = (e: unknown) => axios.isAxiosError(e) ? (e.response?.data?.error || '请求未完成，请重试') : '请求未完成，请重试'
 
 export const listReferences = async () => (await axios.get<{items:Pick[]}>(url+'/reference-library')).data.items

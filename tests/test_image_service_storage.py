@@ -1,4 +1,6 @@
 """Storage safety tests for image generation batches."""
+import errno
+import pytest
 
 from backend.services.image import ImageService
 
@@ -11,8 +13,6 @@ def make_service(tmp_path):
     service.max_concurrent = 5
     service.heartbeat_interval = 1
     service._task_states = {}
-    service._active_task_ids = set()
-    service.orphan_grace_seconds = 0
     return service
 
 
@@ -46,43 +46,21 @@ def test_disk_full_on_cover_stops_paid_requests_for_remaining_pages(tmp_path, mo
     assert all("存储空间" in error["message"] for error in errors[1:])
 
 
-def test_storage_cleanup_preserves_indexed_and_active_tasks(tmp_path, monkeypatch):
+@pytest.mark.parametrize("index", ['{"records":[]}', 'invalid-json'])
+def test_low_disk_preserves_unindexed_images(tmp_path, monkeypatch, index):
     service = make_service(tmp_path)
-    service._active_task_ids.add("task_active")
-
-    (tmp_path / "task_indexed").mkdir()
-    (tmp_path / "task_active").mkdir()
-    (tmp_path / "task_orphan").mkdir()
-    (tmp_path / "task_orphan" / "0.png").write_bytes(b"orphan")
-    (tmp_path / "index.json").write_text(
-        '{"records":[{"task_id":"task_indexed"}]}',
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr(
-        service,
-        "_get_free_storage_bytes",
-        lambda: 0 if (tmp_path / "task_orphan").exists() else 1024,
-    )
-
-    freed = service._cleanup_orphan_task_dirs(required_free_bytes=1024)
-
-    assert freed > 0
-    assert (tmp_path / "task_indexed").exists()
-    assert (tmp_path / "task_active").exists()
-    assert not (tmp_path / "task_orphan").exists()
+    folder = tmp_path / "task_unindexed"
+    folder.mkdir()
+    original = folder / "0.png"
+    original.write_bytes(b"original")
+    (tmp_path / "index.json").write_text(index)
+    monkeypatch.setattr(service, "_get_free_storage_bytes", lambda: 0)
+    with pytest.raises(OSError) as exc:
+        service._ensure_storage_available("task_next")
+    assert exc.value.errno == errno.ENOSPC
+    assert original.read_bytes() == b"original"
 
 
-def test_storage_cleanup_does_not_delete_tasks_when_index_is_invalid(tmp_path):
-    service = make_service(tmp_path)
-    task_dir = tmp_path / "task_unknown"
-    task_dir.mkdir()
-    (tmp_path / "index.json").write_text("not-json", encoding="utf-8")
-
-    freed = service._cleanup_orphan_task_dirs(required_free_bytes=10**30)
-
-    assert freed == 0
-    assert task_dir.exists()
 def test_cover_read_uses_its_own_task_directory(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     pages = [{"index": 0, "type": "cover", "content": "cover"}]

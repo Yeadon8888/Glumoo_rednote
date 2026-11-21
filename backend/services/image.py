@@ -32,7 +32,6 @@ class ImageService:
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
     HEARTBEAT_INTERVAL = 20  # SSE 心跳间隔，避免长时间排队时连接被边缘节点断开
     MIN_FREE_STORAGE_MB = 96
-    ORPHAN_GRACE_SECONDS = 600
 
     def __init__(self, provider_name: str = None):
         """
@@ -75,14 +74,6 @@ class ImageService:
                 os.getenv('HISTORY_MIN_FREE_MB', self.MIN_FREE_STORAGE_MB)
             ))
         ) * 1024 * 1024
-        self.orphan_grace_seconds = max(
-            0,
-            int(provider_config.get(
-                'orphan_grace_seconds',
-                os.getenv('HISTORY_ORPHAN_GRACE_SECONDS', self.ORPHAN_GRACE_SECONDS)
-            ))
-        )
-
         # 检查是否启用短 prompt 模式
         self.use_short_prompt = provider_config.get('short_prompt', False)
 
@@ -102,8 +93,6 @@ class ImageService:
 
         # 存储任务状态（用于重试）
         self._task_states: Dict[str, Dict] = {}
-        self._active_task_ids = set()
-        self._storage_lock = threading.Lock()
 
         logger.info(f"ImageService 初始化完成: provider={provider_name}, type={provider_type}")
 
@@ -134,93 +123,10 @@ class ImageService:
 
         raise ValueError("任务目录未设置")
 
-    def _load_referenced_task_ids(self) -> Optional[set]:
-        """Load task directories that are still referenced by history records."""
-        index_path = os.path.join(self.history_root_dir, "index.json")
-        try:
-            with open(index_path, "r", encoding="utf-8") as index_file:
-                records = json.load(index_file).get("records", [])
-        except (OSError, ValueError, TypeError):
-            logger.exception("读取历史索引失败，跳过孤立任务清理")
-            return None
-
-        return {
-            record.get("task_id")
-            for record in records
-            if record.get("task_id")
-        }
-
-    def _cleanup_orphan_task_dirs(self, required_free_bytes: int) -> int:
-        """Delete oldest unreferenced task directories until enough space is free."""
-        initial_free = self._get_free_storage_bytes()
-        referenced_task_ids = self._load_referenced_task_ids()
-        if referenced_task_ids is None:
-            return 0
-        protected_task_ids = referenced_task_ids | set(
-            getattr(self, "_active_task_ids", set())
-        )
-        cutoff = time.time() - getattr(
-            self,
-            "orphan_grace_seconds",
-            self.ORPHAN_GRACE_SECONDS,
-        )
-        candidates = []
-
-        for name in os.listdir(self.history_root_dir):
-            path = os.path.join(self.history_root_dir, name)
-            if (
-                not name.startswith("task_")
-                or name in protected_task_ids
-                or not os.path.isdir(path)
-            ):
-                continue
-            try:
-                modified_at = os.path.getmtime(path)
-            except OSError:
-                continue
-            if modified_at <= cutoff:
-                candidates.append((modified_at, path))
-
-        for _, path in sorted(candidates):
-            if self._get_free_storage_bytes() >= required_free_bytes:
-                break
-            try:
-                shutil.rmtree(path)
-                logger.info("已清理孤立图片任务目录: %s", path)
-            except OSError:
-                logger.exception("清理孤立图片任务目录失败: %s", path)
-
-        return max(0, self._get_free_storage_bytes() - initial_free)
-
     def _ensure_storage_available(self, task_id: str) -> None:
-        """Reclaim orphaned files and fail before calling a paid image API."""
-        required_free = getattr(
-            self,
-            "min_free_storage_bytes",
-            self.MIN_FREE_STORAGE_MB * 1024 * 1024,
-        )
-        storage_lock = getattr(self, "_storage_lock", None)
-        if storage_lock is None:
-            storage_lock = threading.Lock()
-            self._storage_lock = storage_lock
-
-        with storage_lock:
-            free_before = self._get_free_storage_bytes()
-            if free_before < required_free:
-                freed = self._cleanup_orphan_task_dirs(required_free)
-                logger.warning(
-                    "图片存储空间不足，已自动清理孤立任务: task=%s, freed=%.1fMB",
-                    task_id,
-                    freed / 1024 / 1024,
-                )
-
-            free_after = self._get_free_storage_bytes()
-            if free_after < required_free:
-                raise OSError(
-                    errno.ENOSPC,
-                    "服务器图片存储空间不足，自动清理后仍无法生成。"
-                    "请联系管理员扩容或删除旧的历史记录。",
-                )
+        required = getattr(self, "min_free_storage_bytes", self.MIN_FREE_STORAGE_MB * 1024**2)
+        if self._get_free_storage_bytes() < required:
+            raise OSError(errno.ENOSPC, self._storage_error_message())
 
     def _is_storage_error(self, error: Optional[str]) -> bool:
         if not error:
@@ -236,7 +142,7 @@ class ImageService:
     def _storage_error_message(self) -> str:
         return (
             "服务器图片存储空间不足，本轮已停止生成，避免继续产生图片费用。"
-            "系统会自动清理无历史记录引用的旧任务，请稍后重试。"
+            "请到历史记录下载作品备份，并扩充存储空间。"
         )
 
     @staticmethod
@@ -551,15 +457,9 @@ class ImageService:
 
         logger.info(f"开始图片生成任务: task_id={task_id}, pages={len(pages)}")
 
-        active_task_ids = getattr(self, "_active_task_ids", None)
-        if active_task_ids is None:
-            active_task_ids = set()
-            self._active_task_ids = active_task_ids
-        active_task_ids.add(task_id)
         try:
             self._ensure_storage_available(task_id)
         except OSError as error:
-            active_task_ids.discard(task_id)
             message = self._storage_error_message()
             logger.error("图片生成任务存储预检失败: task=%s, error=%s", task_id, error)
             for page in pages:
@@ -643,7 +543,6 @@ class ImageService:
                     "total": total, "completed": 0, "failed": len(pages),
                     "failed_indices": [page["index"] for page in pages],
                 }}
-                active_task_ids.discard(task_id)
                 return
 
             proof_image_data = None
@@ -746,7 +645,6 @@ class ImageService:
                 "failed": len(failed_pages),
                 "failed_indices": [page["index"] for page in failed_pages],
             }}
-            active_task_ids.discard(task_id)
             return
 
         # ==================== 第一阶段：生成封面 ====================
@@ -1034,7 +932,6 @@ class ImageService:
                 "failed_indices": [p["index"] for p in failed_pages]
             }
         }
-        active_task_ids.discard(task_id)
 
     def get_cached_generation_events(self, record_id: str, pages: list) -> List[Dict[str, Any]]:
         record = self.history_service.get_record(record_id, sync_images=True)

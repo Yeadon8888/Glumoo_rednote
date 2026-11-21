@@ -85,19 +85,30 @@ def review(record_id):
         return jsonify(review=json.loads(row[0]) if row else None)
     data = request.get_json()
     reason = data.get("reason")
-    if data.get("rating") not in ("good", "bad") or not isinstance(reason,str) or not 1<=len(reason.strip())<=2000:
-        return jsonify(error="请选择好或差，并填写 1 至 2000 字的原因"), 400
+    score = data.get("score")
+    rating = data.get("rating")
+    if "score" in data:
+        if type(score) is not int or not 1 <= score <= 5:
+            return jsonify(error="请选择 1 至 5 分"), 400
+        rating = "good" if score >= 4 else "bad" if score <= 2 else "neutral"
+    elif rating not in ("good", "bad"):
+        return jsonify(error="请选择评分"), 400
+    if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 2000:
+        return jsonify(error="请填写 1 至 2000 字的点评"), 400
     try:
-        return jsonify(review=review_record(record, data["rating"], reason.strip(), data.get("revision")))
+        return jsonify(review=review_record(record, rating, reason.strip(), data.get("revision"), score))
     except ValueError as exc:
         return jsonify(error=str(exc)), 409
 
 
 @studio.get("/reviews.jsonl")
 def export():
+    history = request.args.get("history") == "1"
     def lines():
         with database() as db:
-            for row in db.execute("SELECT data FROM reviews ORDER BY record_id,version"):
+            query = ("SELECT data FROM review_events ORDER BY reviewed_at" if history else
+                     "SELECT data FROM reviews ORDER BY record_id,version")
+            for row in db.execute(query):
                 yield row[0] + "\n"
     return Response(lines(), mimetype="application/x-ndjson",
                     headers={"Content-Disposition": 'attachment; filename="glumoo-reviews.jsonl"'})

@@ -4,14 +4,14 @@
     <!-- 封面区域 -->
     <div class="card-cover" @click="$emit('preview', record.id)">
       <img
-        v-if="record.thumbnail && record.task_id"
+        v-if="record.thumbnail && record.task_id && !record.missing_cover"
         :src="`/api/images/${record.task_id}/${record.thumbnail}`"
         alt="cover"
         loading="lazy"
         decoding="async"
       />
       <div v-else class="cover-placeholder">
-        <span>{{ record.title.charAt(0) }}</span>
+        <span>{{ record.missing_cover ? '封面原图缺失' : record.title.charAt(0) }}</span>
       </div>
 
       <!-- 悬浮操作按钮 -->
@@ -68,6 +68,7 @@ interface GalleryRecord {
   status: string
   page_count: number
   updated_at: string
+  missing_cover?: boolean
   thumbnail?: string | null
   task_id?: string | null
 }

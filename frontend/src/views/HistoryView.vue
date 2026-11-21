@@ -6,8 +6,9 @@
       <div>
         <h1 class="page-title">我的创作</h1>
       </div>
-      <div style="display: flex; gap: 10px;">
-        <a class="btn" href="/api/studio/reviews.jsonl" download>导出点评 JSONL</a>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <a class="btn" href="/api/history/backup.zip" download>备份全部作品</a>
+        <a class="btn" href="/api/studio/reviews.jsonl?history=1" download>导出点评 JSONL</a>
         <button
           class="btn"
           @click="handleScanAll"
@@ -38,6 +39,10 @@
       <button type="button" @click="successMessage = ''" aria-label="关闭提示">×</button>
     </div>
 
+    <p v-if="stats?.storage" :role="stats.storage.warning ? 'alert' : 'status'">
+      历史存储剩余 {{ (stats.storage.free / 1024**3).toFixed(2) }} GiB。
+      <strong v-if="stats.storage.warning">空间偏低，请下载全部作品备份，并安排扩容。</strong>
+    </p>
     <!-- Stats Overview -->
     <StatsOverview v-if="stats" :stats="stats" />
 
@@ -445,16 +450,7 @@ onMounted(async () => {
     await viewImages(route.params.id as string)
   }
 
-  // 自动执行一次扫描（静默，不显示结果）
-  try {
-    const result = await scanAllTasks()
-    if (result.success && (result.synced || 0) > 0) {
-      await loadData()
-      await loadStats()
-    }
-  } catch (e) {
-    console.error('自动扫描失败:', e)
-  }
+
 })
 </script>
 

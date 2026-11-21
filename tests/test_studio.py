@@ -108,3 +108,34 @@ def test_indexed_selection_matches_style_without_requiring_visual_api():
     assert all(2 in features[x["id"]]["styles"] for x in selected)
     assert any("梳毛" in x["reason"] for x in selected)
     assert indexed_picks(files, "盆栽", "glumoo_17") == []
+
+
+def test_scored_edits_survive_and_export_with_images(client, history, tmp_path):
+    import zipfile
+    key = history.create_record("偏好训练样本", {"pages": [{}]})
+    folder = tmp_path / "task_score"
+    folder.mkdir()
+    original = png("gold")
+    (folder / "0.png").write_bytes(original)
+    history.merge_generated_image(key, folder.name, 0, "0.png")
+    revision = review_revision(history.get_record(key))
+    url = "/api/studio/reviews/" + key
+    for score in (True, 0, 6, "4"):
+        assert client.put(url, json={"score":score,"reason":"理由","revision":revision}).status_code == 400
+    for score in (5, 5, 3):
+        assert client.put(url, json={"score":score,"reason":"主体清晰","revision":revision}).status_code == 200
+    assert client.get(url).json["review"]["score"] == 3
+    data = client.get("/api/studio/reviews.jsonl?history=1").data
+    rows = [json.loads(line) for line in data.splitlines()]
+    assert [r["score"] for r in rows] == [5, 3]
+    save_settings({"tikhub_key": "private-test-secret"})
+    orphan = tmp_path / "task_unindexed"
+    orphan.mkdir()
+    (orphan / "0.png").write_bytes(original)
+    with zipfile.ZipFile(io.BytesIO(client.get("/api/history/backup.zip").data)) as archive:
+        assert archive.testzip() is None
+        assert archive.read("training/reviews.jsonl") == data
+        assert archive.read("training/samples/" + rows[0]["images"][0]["sha256"]) == original
+        assert archive.read("history/task_unindexed/0.png") == original
+        assert json.loads(archive.read("manifest.json"))["missing_images"] == []
+        assert not any("sqlite" in name for name in archive.namelist())

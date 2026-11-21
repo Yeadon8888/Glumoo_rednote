@@ -8,15 +8,39 @@
 import os
 import json
 import uuid
+import errno
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-from enum import Enum
+from functools import wraps
+from tempfile import NamedTemporaryFile
+import shutil
+from filelock import FileLock
 
 from backend.services.history_image_merger import HistoryImageMerger
 
 logger = logging.getLogger(__name__)
+
+
+def history_transaction(fn):
+    @wraps(fn)
+    def locked(self, *args, **kwargs):
+        with FileLock(os.path.join(self.history_dir, ".history.lock"), is_singleton=True):
+            return fn(self, *args, **kwargs)
+    return locked
+
+
+def atomic_json(path, data):
+    with NamedTemporaryFile("w", encoding="utf-8", dir=Path(path).parent, delete=False) as out:
+        try:
+            json.dump(data, out, ensure_ascii=False)
+            out.flush()
+            os.fsync(out.fileno())
+            out.close()
+            os.replace(out.name, path)
+        finally:
+            Path(out.name).unlink(missing_ok=True)
 
 
 class RecordStatus:
@@ -46,38 +70,73 @@ class HistoryService:
         self.index_file = os.path.join(self.history_dir, "index.json")
         self._init_index()
 
-    def _init_index(self) -> None:
-        """
-        初始化索引文件
-
-        如果索引文件不存在，则创建一个空索引
-        """
-        if not os.path.exists(self.index_file):
-            with open(self.index_file, "w", encoding="utf-8") as f:
-                json.dump({"records": []}, f, ensure_ascii=False, indent=2)
-
-    def _load_index(self) -> Dict:
-        """
-        加载索引文件
-
-        Returns:
-            Dict: 索引数据，包含 records 列表
-        """
+    @history_transaction
+    def _init_index(self):
         try:
-            with open(self.index_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {"records": []}
+            old = self._read_index()
+        except FileNotFoundError:
+            old = None
+        except (ValueError, UnicodeError):
+            shutil.copyfile(self.index_file, self.index_file + ".corrupt-" + uuid.uuid4().hex)
+            old = None
+        summaries = {r["id"]: r for r in (old or {}).get("records", [])}
+        for path in Path(self.history_dir).glob("*.json"):
+            try:
+                uuid.UUID(path.stem)
+            except ValueError:
+                continue
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                if record["id"] == path.stem:
+                    summaries[path.stem] = self._summary(record)
+            except (ValueError, TypeError, KeyError):
+                logger.exception("作品记录无法读取，保留现有索引与文件: %s", path.name)
+        for removed in (Path(self.history_dir) / ".trash").glob("*.json"):
+            if not Path(self._get_record_path(removed.stem)).exists():
+                summaries.pop(removed.stem, None)
+        records = sorted(summaries.values(), key=lambda r: r.get("created_at") or "", reverse=True)
+        rebuilt = {"records": records}
+        if rebuilt != old:
+            try:
+                self._save_index(rebuilt)
+            except OSError as exc:
+                if exc.errno != errno.ENOSPC:
+                    raise
+                logger.warning("存储已满，使用内存中的作品索引供浏览和备份")
+        return rebuilt
 
-    def _save_index(self, index: Dict) -> None:
-        """
-        保存索引文件
+    @staticmethod
+    def _summary(record):
+        return {**{key: record.get(key) for key in
+                   ("id", "title", "created_at", "updated_at", "status", "thumbnail")},
+                "page_count": len((record.get("outline") or {}).get("pages") or []),
+                "task_id": (record.get("images") or {}).get("task_id")}
 
-        Args:
-            index: 索引数据
-        """
-        with open(self.index_file, "w", encoding="utf-8") as f:
-            json.dump(index, f, ensure_ascii=False, indent=2)
+    def _read_index(self):
+        with open(self.index_file, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not isinstance(data.get("records"), list) or any(
+            not isinstance(r, dict) or not isinstance(r.get("id"), str) for r in data["records"]
+        ):
+            raise ValueError("无效的历史索引")
+        return data
+
+    def _load_index(self):
+        try:
+            return self._read_index()
+        except (FileNotFoundError, ValueError, UnicodeError):
+            return self._init_index()
+
+    def _catalog(self):
+        index = self._load_index()
+        ids = {row["id"] for row in index["records"]}
+        for path in Path(self.history_dir).glob("*.json"):
+            if path.stem not in ids and len(path.stem) == 36:
+                return self._init_index()
+        return index
+
+    def _save_index(self, index):
+        atomic_json(self.index_file, index)
 
     def _get_record_path(self, record_id: str) -> str:
         """
@@ -91,6 +150,7 @@ class HistoryService:
         """
         return os.path.join(self.history_dir, f"{record_id}.json")
 
+    @history_transaction
     def create_record(
         self,
         topic: str,
@@ -135,21 +195,11 @@ class HistoryService:
 
         # 保存完整记录到独立文件
         record_path = self._get_record_path(record_id)
-        with open(record_path, "w", encoding="utf-8") as f:
-            json.dump(record, f, ensure_ascii=False, indent=2)
+        atomic_json(record_path, record)
 
         # 更新索引（用于快速列表查询）
         index = self._load_index()
-        index["records"].insert(0, {
-            "id": record_id,
-            "title": topic,
-            "created_at": now,
-            "updated_at": now,
-            "status": RecordStatus.DRAFT,  # 索引中也记录状态
-            "thumbnail": None,
-            "page_count": len(outline.get("pages", [])),  # 预期页数
-            "task_id": task_id
-        })
+        index["records"] = [self._summary(record)] + [r for r in index["records"] if r["id"] != record_id]
         self._save_index(index)
 
         return record_id
@@ -186,7 +236,7 @@ class HistoryService:
             return None
 
         if sync_images:
-            synced = self.sync_record_images(record_id, record)
+            synced = self.sync_record_images(record_id)
             if synced.get("success") and synced.get("updated"):
                 return self.get_record(record_id, sync_images=False)
 
@@ -205,6 +255,7 @@ class HistoryService:
         record_path = self._get_record_path(record_id)
         return os.path.exists(record_path)
 
+    @history_transaction
     def update_record(
         self,
         record_id: str,
@@ -270,34 +321,21 @@ class HistoryService:
 
         # 保存完整记录
         record_path = self._get_record_path(record_id)
-        with open(record_path, "w", encoding="utf-8") as f:
-            json.dump(record, f, ensure_ascii=False, indent=2)
+        atomic_json(record_path, record)
 
         # 同步更新索引
         index = self._load_index()
-        for idx_record in index["records"]:
-            if idx_record["id"] == record_id:
-                idx_record["updated_at"] = now
-
-                # 更新状态
-                idx_record["status"] = record.get("status", idx_record.get("status"))
-
-                # 更新缩略图
-                idx_record["thumbnail"] = record.get("thumbnail")
-
-                # 更新页数（如果大纲被修改）
-                if outline:
-                    idx_record["page_count"] = len(outline.get("pages", []))
-
-                # 更新任务 ID
-                if record.get("images", {}).get("task_id"):
-                    idx_record["task_id"] = record.get("images", {}).get("task_id")
-
+        for i, row in enumerate(index["records"]):
+            if row["id"] == record_id:
+                index["records"][i] = self._summary(record)
                 break
+        else:
+            index["records"].insert(0, self._summary(record))
 
         self._save_index(index)
         return True
 
+    @history_transaction
     def merge_generated_image(
         self,
         record_id: str,
@@ -334,6 +372,7 @@ class HistoryService:
             thumbnail=thumbnail,
         )
 
+    @history_transaction
     def sync_record_images(self, record_id: str, record: Optional[Dict] = None) -> Dict[str, Any]:
         """从任务目录扫描图片并合并回历史记录。"""
         if record is None:
@@ -416,14 +455,12 @@ class HistoryService:
             return current_status
         return incoming_status
 
+    @history_transaction
     def delete_record(self, record_id: str) -> bool:
         """
         删除历史记录
 
-        会同时删除：
-        1. 记录 JSON 文件
-        2. 关联的任务图片目录
-        3. 索引中的记录
+        将记录移出列表，并在备份中保留原始记录及图片。
 
         Args:
             record_id: 记录 ID
@@ -435,24 +472,10 @@ class HistoryService:
         if not record:
             return False
 
-        # 删除关联的任务图片目录
-        if record.get("images") and record["images"].get("task_id"):
-            task_id = record["images"]["task_id"]
-            task_dir = os.path.join(self.history_dir, task_id)
-            if os.path.exists(task_dir) and os.path.isdir(task_dir):
-                try:
-                    import shutil
-                    shutil.rmtree(task_dir)
-                    print(f"已删除任务目录: {task_dir}")
-                except Exception as e:
-                    print(f"删除任务目录失败: {task_dir}, {e}")
-
-        # 删除记录 JSON 文件
-        record_path = self._get_record_path(record_id)
-        try:
-            os.remove(record_path)
-        except Exception:
-            return False
+        # A task can be referenced by multiple works. Keep original files available for backup.
+        trash = Path(self.history_dir) / ".trash"
+        trash.mkdir(exist_ok=True)
+        os.replace(self._get_record_path(record_id), trash / f"{record_id}.json")
 
         # 从索引中移除
         index = self._load_index()
@@ -483,7 +506,7 @@ class HistoryService:
                 - page_size: 每页大小
                 - total_pages: 总页数
         """
-        index = self._load_index()
+        index = self._catalog()
         records = index.get("records", [])
 
         # 按状态过滤
@@ -496,6 +519,7 @@ class HistoryService:
         end = start + page_size
         page_records = records[start:end]
 
+        self._mark_missing_covers(page_records)
         return {
             "records": page_records,
             "total": total,
@@ -514,7 +538,7 @@ class HistoryService:
         Returns:
             List[Dict]: 匹配的记录列表（按创建时间倒序）
         """
-        index = self._load_index()
+        index = self._catalog()
         records = index.get("records", [])
 
         # 不区分大小写的标题搜索
@@ -524,7 +548,14 @@ class HistoryService:
             if keyword_lower in r.get("title", "").lower()
         ]
 
+        self._mark_missing_covers(results)
         return results
+
+    def _mark_missing_covers(self, rows):
+        for row in rows:
+            name, task = row.get("thumbnail"), row.get("task_id")
+            if name and task and not (Path(self.history_dir) / task / name).is_file():
+                row["missing_cover"] = True
 
     def get_statistics(self) -> Dict:
         """
@@ -540,10 +571,11 @@ class HistoryService:
                     - completed: 已完成数
                     - error: 错误数
         """
-        index = self._load_index()
+        index = self._catalog()
         records = index.get("records", [])
 
         total = len(records)
+        usage = shutil.disk_usage(self.history_dir)
         status_count = {}
 
         # 统计各状态的记录数
@@ -553,9 +585,12 @@ class HistoryService:
 
         return {
             "total": total,
+            "storage": {"free": usage.free, "total": usage.total,
+                        "warning": usage.free <= max(256 * 1024**2, usage.total // 5)},
             "by_status": status_count
         }
 
+    @history_transaction
     def scan_and_sync_task_images(self, task_id: str) -> Dict[str, Any]:
         """
         扫描任务文件夹，同步图片列表
@@ -592,13 +627,7 @@ class HistoryService:
 
             # 查找关联的历史记录
             index = self._load_index()
-            record_id = None
-            for rec in index.get("records", []):
-                # 通过遍历所有记录，找到 task_id 匹配的记录
-                record_detail = self.get_record(rec["id"])
-                if record_detail and record_detail.get("images", {}).get("task_id") == task_id:
-                    record_id = rec["id"]
-                    break
+            record_id = next((row["id"] for row in index["records"] if row.get("task_id") == task_id), None)
 
             if record_id:
                 # 更新历史记录

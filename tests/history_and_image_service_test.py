@@ -168,3 +168,35 @@ def test_retry_failed_images_creates_task_dir_and_merges_by_index(tmp_path):
     record = service.get_record(record_id)
     assert record["images"]["generated"] == ["", "1.png", "2.png"]
     assert record["status"] == "partial"
+
+
+def test_concurrent_history_creation_and_index_repair(tmp_path):
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    store = make_history_service(tmp_path)
+    def create(i):
+        return store.create_record(str(i), {"pages": [{}]})
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ids = set(pool.map(create, range(32)))
+    def listed():
+        return {r["id"] for r in store.list_records(page_size=100)["records"]}
+    assert listed() == ids
+    Path(store.index_file).write_text('{"records":[]}')
+    store._init_index()
+    assert listed() == ids
+    Path(store.index_file).write_text('truncated')
+    assert listed() == ids
+    assert next(tmp_path.glob("index.json.corrupt-*")).read_text() == "truncated"
+
+
+def test_deleting_one_record_preserves_shared_original(tmp_path):
+    store = make_history_service(tmp_path)
+    first, second = [store.create_record(title, {"pages": [{}]}, "task_shared") for title in ("a", "b")]
+    task = tmp_path / "task_shared"
+    task.mkdir()
+    (task / "0.png").write_bytes(b"original")
+    store.delete_record(first)
+    store._init_index()
+    assert store.list_records()["total"] == 1
+    assert store.get_record(second)
+    assert (task / "0.png").read_bytes() == b"original"

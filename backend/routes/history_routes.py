@@ -13,7 +13,9 @@ import os
 import io
 import zipfile
 import logging
-from flask import Blueprint, request, jsonify, send_file
+from datetime import datetime
+from backend.services.history_backup import backup_chunks
+from flask import Response, Blueprint, request, jsonify, send_file
 from backend.services.history import get_history_service
 from .utils import api_error_response, normalize_error_result, validation_error
 
@@ -23,6 +25,13 @@ logger = logging.getLogger(__name__)
 def create_history_blueprint():
     """创建历史记录路由蓝图（工厂函数，支持多次调用）"""
     history_bp = Blueprint('history', __name__)
+
+    @history_bp.get('/history/backup.zip')
+    def backup_history():
+        filename = datetime.now().strftime("glumoo-history-%Y%m%d-%H%M%S.zip")
+        return Response(backup_chunks(get_history_service()), mimetype="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                 "Cache-Control": "no-store"})
 
     # ==================== CRUD 操作 ====================
 
