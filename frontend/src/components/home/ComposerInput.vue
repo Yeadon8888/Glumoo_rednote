@@ -3,8 +3,9 @@
   <div class="composer-container">
     <div class="asset-library">
       <div class="asset-library-bar">
-        <button type="button" class="asset-button" :aria-expanded="showAssetLibrary" @click="toggleAssetLibrary" :disabled="loading || assetBusy">
-          选择品牌素材 <span v-if="brandAssets.length">{{ brandAssets.length }}</span>
+        <button type="button" class="asset-button asset-select" :aria-expanded="showAssetLibrary" @click="toggleAssetLibrary" :disabled="loading || assetBusy">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9" r="1.4"/><path d="m4 17 5-5 3.5 3 3.5-4 5 5"/></svg>
+          选择品牌素材 <span v-if="brandAssets.length" class="asset-count">{{ brandAssets.length }}</span>
         </button>
         <button type="button" class="asset-button" :disabled="loading || assetBusy" @click="assetInput?.click()">
           {{ uploading ? '正在收藏…' : '上传并收藏' }}
@@ -53,7 +54,7 @@
       ></textarea>
     </div>
 
-    <NoteReferences ref="notePanel" :disabled="loading" />
+    <NoteReferences ref="notePanel" :topic="modelValue" :disabled="loading" />
     <div class="style-section">
       <div class="style-heading">
         <h2 id="reference-style-heading">参考风格</h2>
@@ -241,8 +242,8 @@ const store = useGeneratorStore()
 const chosenStyle = computed({get: () => store.contentStyle, set: value => store.setContentStyle(value)})
 const preparationHint = computed(() => {
   if (assetBusy.value) return '正在处理品牌素材，请稍候。'
-  if (notePanel.value?.pending) return '请先添加正在编辑的笔记，或清空输入框。'
-  if (researchPanel.value?.working) return '请先完成当前的调研或选图。'
+  if (notePanel.value?.busy) return '正在读取调研笔记，请稍候。'
+  if (researchPanel.value?.working) return '请先完成当前的参考图选择。'
   if (chosenStyle.value.startsWith('glumoo') && uploadedImages.value.length !== 6 &&
       (uploadedImages.value.length > 0 || researchPanel.value?.picks.length !== 6))
     return '请先匹配、从库中选择，或上传六张参考图。'
@@ -492,6 +493,14 @@ defineExpose({
   font-size: 12px;
   cursor: pointer;
 }
+
+.asset-library-bar {align-items:center;flex-wrap:wrap}
+.asset-library-bar .asset-button {min-height:46px;padding:10px 16px;font-size:14px;font-family:inherit}
+.asset-library-bar .asset-select {display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:50px;padding:12px 20px;background:#074bbc;border-color:#074bbc;color:white;font-size:16px;font-weight:650}
+.asset-select:hover:enabled {background:#073c94}
+.asset-count {padding:2px 6px;border-radius:6px;background:#ffffff29;font-size:12px}
+.asset-library-bar button:focus-visible {outline:3px solid #7399e8;outline-offset:3px}
+.asset-library-bar button:disabled {opacity:.65;cursor:default}
 
 .asset-grid {
   display: grid;

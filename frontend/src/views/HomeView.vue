@@ -156,7 +156,7 @@ async function handleGenerate() {
       store.platform,
       store.contentStyle,
       selectedProductFiles.value,
-      panel?.study?.id,
+      composerRef.value?.notePanel?.study?.id,
       composerRef.value?.notePanel?.notes
     )
 
